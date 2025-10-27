@@ -23,8 +23,12 @@ export default function Player() {
     
     setError(null)
     
-    // Use the file path directly - Electron will handle it
-    v.src = sel.path
+    // Convert Windows path to proper file URL with encoding
+    const fileUrl = sel.path.startsWith('file://') 
+      ? sel.path 
+      : `file:///${sel.path.replace(/\\/g, '/').replace(/ /g, '%20')}`
+    
+    v.src = fileUrl
     
     const onTime = () => {
       const currentTime = v.currentTime
