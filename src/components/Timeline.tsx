@@ -1,23 +1,27 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { clamp } from '../lib/ff'
-import ClipItem from './ClipItem'
+import TrackLane from './TrackLane'
 
 export default function Timeline() {
-  const { setTrim, selectedId, select, reorderClips, deleteClip } = useStore()
+  const { setTrim, selectedId, select, reorderClips, deleteClip, moveClipToTrack, getClipById } = useStore()
   const containerRef = useRef<HTMLDivElement>(null)
-  const sortedClips = useStore.getState().getClipsSorted()
+  const mainTrack = useStore(s => s.tracks.find(t => t.id === 'main'))!
+  const overlayTrack = useStore(s => s.tracks.find(t => t.id === 'overlay'))!
+  const allClips = useStore.getState().getAllClips()
+  
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [draggedTrackId, setDraggedTrackId] = useState<string | null>(null)
   
   // Auto-select first clip if nothing selected (must be before early return)
   useEffect(() => {
-    if (!selectedId && sortedClips.length > 0) {
-      select(sortedClips[0].id)
+    if (!selectedId && allClips.length > 0) {
+      select(allClips[0].id)
     }
-  }, [selectedId, sortedClips.length, select])
+  }, [selectedId, allClips.length, select])
   
-  if (sortedClips.length === 0) {
+  if (allClips.length === 0) {
     return (
       <div style={{ padding: 16, color: '#999' }}>
         Timeline: (empty) - Import clips to get started
@@ -25,10 +29,10 @@ export default function Timeline() {
     )
   }
 
-  const sel = sortedClips.find(c => c.id === selectedId) || sortedClips[0]
+  const sel = getClipById(selectedId || '') || allClips[0]
 
   // Safety checks
-  if (sel.duration <= 0) {
+  if (!sel || sel.duration <= 0) {
     return <div style={{ padding: 16, color: '#c00' }}>Error: Invalid clip duration</div>
   }
 
@@ -80,73 +84,111 @@ export default function Timeline() {
   const percentTrimmed = ((sel.duration - trimmedDuration) / sel.duration * 100).toFixed(1)
   
   // Calculate total duration and scale to fit in ~1000px max
-  const totalDuration = sortedClips.reduce((sum, c) => sum + (c.end - c.start), 0)
+  const totalDuration = useStore.getState().getTotalDuration()
   const maxTimelineWidth = 1000
-  const PIXELS_PER_SECOND = Math.min(50, maxTimelineWidth / totalDuration)
+  const PIXELS_PER_SECOND = Math.min(50, maxTimelineWidth / Math.max(1, totalDuration))
   
-  // Drag and drop handlers
-  const handleDragStart = (index: number) => (e: React.DragEvent) => {
-    setDraggedIndex(index)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-  
-  const handleDragOver = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setDragOverIndex(index)
-  }
-  
-  const handleDrop = (index: number) => (e: React.DragEvent) => {
-    e.preventDefault()
+  // Drag and drop handlers for tracks
+  const createTrackHandlers = (trackId: string) => {
+    const trackClips = trackId === 'main' ? mainTrack.clips : overlayTrack.clips
     
-    if (draggedIndex !== null && draggedIndex !== index) {
-      reorderClips(draggedIndex, index, 'main') // Main track for now
+    const handleDragStart = (index: number) => (e: React.DragEvent) => {
+      setDraggedIndex(index)
+      setDraggedTrackId(trackId)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('trackId', trackId)
+      e.dataTransfer.setData('clipId', trackClips[index].id)
     }
     
-    setDraggedIndex(null)
-    setDragOverIndex(null)
+    const handleDragOver = (index: number) => (e: React.DragEvent) => {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDragOverIndex(index)
+    }
+    
+    const handleDrop = (index: number) => (e: React.DragEvent) => {
+      e.preventDefault()
+      const sourceTrackId = e.dataTransfer.getData('trackId')
+      
+      if (sourceTrackId === trackId && draggedIndex !== null && draggedIndex !== index) {
+        // Reorder within same track
+        reorderClips(draggedIndex, index, trackId)
+      } else if (sourceTrackId !== trackId) {
+        // Move to different track (Phase 3.4)
+        const clipId = e.dataTransfer.getData('clipId')
+        if (clipId) {
+          moveClipToTrack(clipId, trackId)
+        }
+      }
+      
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      setDraggedTrackId(null)
+    }
+    
+    const handleDropOnTrack = (e: React.DragEvent) => {
+      e.preventDefault()
+      const sourceTrackId = e.dataTransfer.getData('trackId')
+      const clipId = e.dataTransfer.getData('clipId')
+      
+      if (sourceTrackId && sourceTrackId !== trackId && clipId) {
+        // Move clip to this track (drop on empty area)
+        moveClipToTrack(clipId, trackId)
+      }
+      
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      setDraggedTrackId(null)
+    }
+    
+    return { handleDragStart, handleDragOver, handleDrop, handleDropOnTrack }
   }
   
-  const handleDragEnd = () => {
-    setDraggedIndex(null)
-    setDragOverIndex(null)
-  }
+  const mainHandlers = createTrackHandlers('main')
+  const overlayHandlers = createTrackHandlers('overlay')
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Clips Timeline */}
+      {/* Two-Track Timeline */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>CLIPS TIMELINE ({sortedClips.length} clip{sortedClips.length !== 1 ? 's' : ''})</span>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 12, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>MULTI-TRACK TIMELINE ({allClips.length} total clip{allClips.length !== 1 ? 's' : ''})</span>
           <span style={{ fontWeight: 'normal', color: '#1e90ff' }}>
             Total Duration: {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toFixed(1).padStart(4, '0')}
           </span>
         </div>
-        <div style={{ 
-          display: 'flex', 
-          gap: 8, 
-          padding: 12, 
-          background: '#f8f9fa', 
-          border: '1px solid #ddd',
-          borderRadius: 4,
-          overflowX: 'auto',
-          minHeight: 80
-        }}>
-          {sortedClips.map((clip, index) => (
-            <ClipItem
-              key={clip.id}
-              clip={clip}
-              isSelected={clip.id === selectedId}
-              onSelect={() => select(clip.id)}
-              onDelete={() => deleteClip(clip.id)}
-              pixelsPerSecond={PIXELS_PER_SECOND}
-              onDragStart={handleDragStart(index)}
-              onDragOver={handleDragOver(index)}
-              onDrop={handleDrop(index)}
-              isDragOver={dragOverIndex === index && draggedIndex !== index}
-            />
-          ))}
-        </div>
+        
+        {/* Main Track */}
+        <TrackLane
+          track={mainTrack}
+          selectedId={selectedId}
+          onSelect={select}
+          onDelete={deleteClip}
+          onReorder={(from, to) => reorderClips(from, to, 'main')}
+          pixelsPerSecond={PIXELS_PER_SECOND}
+          onDragStart={mainHandlers.handleDragStart}
+          onDragOver={mainHandlers.handleDragOver}
+          onDrop={mainHandlers.handleDrop}
+          dragOverIndex={draggedTrackId === 'main' ? dragOverIndex : null}
+          draggedIndex={draggedTrackId === 'main' ? draggedIndex : null}
+          onDropOnTrack={mainHandlers.handleDropOnTrack}
+        />
+        
+        {/* Overlay Track (PiP) */}
+        <TrackLane
+          track={overlayTrack}
+          selectedId={selectedId}
+          onSelect={select}
+          onDelete={deleteClip}
+          onReorder={(from, to) => reorderClips(from, to, 'overlay')}
+          pixelsPerSecond={PIXELS_PER_SECOND}
+          onDragStart={overlayHandlers.handleDragStart}
+          onDragOver={overlayHandlers.handleDragOver}
+          onDrop={overlayHandlers.handleDrop}
+          dragOverIndex={draggedTrackId === 'overlay' ? dragOverIndex : null}
+          draggedIndex={draggedTrackId === 'overlay' ? draggedIndex : null}
+          onDropOnTrack={overlayHandlers.handleDropOnTrack}
+        />
       </div>
 
       {/* Trim Controls for Selected Clip */}
