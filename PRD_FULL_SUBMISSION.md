@@ -254,11 +254,11 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Goal**: Add overlay/PiP track above main track
 
 **Tasks**:
-- [ ] **3.1**: Update store to use `tracks: Track[]` model
-- [ ] **3.2**: Create track 0 (Main) and track 1 (Overlay) by default
-- [ ] **3.3**: Render two horizontal lanes in Timeline component
-- [ ] **3.4**: Allow dropping clips into either track
-- [ ] **3.5**: Add visual indicator for track type (main=full height, overlay=PiP badge)
+- [x] **3.1**: Update store to use `tracks: Track[]` model ✅
+- [x] **3.2**: Create track 0 (Main) and track 1 (Overlay) by default ✅
+- [x] **3.3**: Render two horizontal lanes in Timeline component ✅
+- [x] **3.4**: Allow dropping clips into either track ✅
+- [x] **3.5**: Add visual indicator for track type (main=full height, overlay=PiP badge) ✅
 - [ ] **3.6**: Update export to handle overlay with ffmpeg filter_complex
 - [ ] **3.7**: Add overlay position controls (bottom-right, top-left, center, etc.)
 
@@ -282,11 +282,66 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Timeline Visual**:
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Overlay: [Clip 4: 5s (PiP)]                            │
-├─────────────────────────────────────────────────────────┤
 │ Main:    [Clip 1] [Clip 2] [Clip 3]            ▶ 00:23│
+├─────────────────────────────────────────────────────────┤
+│ Overlay: [Clip 4: 5s (PiP)]                            │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Status**: ✅ **Tasks 3.1-3.5 COMPLETE!** Two-track UI fully functional with drag-and-drop.
+
+---
+
+### Phase 3.5: Build & Package Native App (Priority: CRITICAL)
+**Goal**: Package app for distribution to verify it works outside dev mode
+
+**Tasks**:
+- [ ] **3.5.1**: Run production build (`npm run build`)
+- [ ] **3.5.2**: Verify bundled files in `dist/` directory
+- [ ] **3.5.3**: Package for Windows (`npm run pack`)
+- [ ] **3.5.4**: Verify ffmpeg-static binary is included in packaged app
+- [ ] **3.5.5**: Test packaged app (import, edit, export)
+- [ ] **3.5.6**: Test on clean machine (no dev environment)
+- [ ] **3.5.7**: Document any packaging issues and fixes
+
+**Packaging Checks**:
+- ✅ App launches without dev server
+- ✅ FFmpeg binary is accessible
+- ✅ File dialogs work (import, save as)
+- ✅ Video preview works (media:// protocol)
+- ✅ Export works (trim, concat, PiP)
+- ✅ No missing dependencies errors
+- ✅ App icon displays correctly
+
+**Electron Builder Config Verify**:
+```json
+"build": {
+  "appId": "com.clappper.app",
+  "productName": "Clappper",
+  "files": ["dist/**/*", "electron/**/*.js"],
+  "extraResources": [
+    {
+      "from": "node_modules/ffmpeg-static",
+      "to": "ffmpeg-static",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": ["nsis"]
+  },
+  "mac": {
+    "target": ["dmg"]
+  }
+}
+```
+
+**Known Packaging Gotchas**:
+- FFmpeg path resolution (use `app.isPackaged` to detect prod vs dev)
+- Windows long paths (keep temp paths short)
+- ASAR unpacking for native binaries
+- CSP must allow media:// protocol in production
+
+---
 
 ### Phase 4: Thumbnails (Priority 3)
 **Goal**: Show preview thumbnails for each clip and trim points
