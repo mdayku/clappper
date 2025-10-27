@@ -1,0 +1,92 @@
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const path = require('node:path')
+const fs = require('node:fs')
+const ffmpegPath = require('ffmpeg-static')
+const ffmpeg = require('fluent-ffmpeg')
+
+ffmpeg.setFfmpegPath(ffmpegPath)
+
+let win = null
+
+const createWindow = async () => {
+  const isDev = !app.isPackaged
+  
+  win = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: !isDev  // Disable webSecurity ONLY in dev mode for local file access
+    }
+  })
+
+  // In dev mode, connect to Vite server (check multiple ports)
+  if (isDev) {
+    // Try common Vite ports
+    const ports = [5173, 5174, 5175, 5176, 5177]
+    let loaded = false
+    for (const port of ports) {
+      try {
+        await win.loadURL(`http://localhost:${port}`)
+        loaded = true
+        console.log(`Loaded from Vite dev server on port ${port}`)
+        break
+      } catch (err) {
+        // Try next port
+      }
+    }
+    if (!loaded) {
+      console.error('Could not connect to Vite dev server')
+    }
+  } else {
+    await win.loadFile(path.join(__dirname, '../dist/index.html'))
+  }
+  
+  // Open DevTools in development
+  if (isDev) {
+    win.webContents.openDevTools()
+  }
+}
+
+app.whenReady().then(createWindow)
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+
+ipcMain.handle('dialog:openFiles', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'mkv'] }]
+  })
+  return canceled ? [] : filePaths
+})
+
+ipcMain.handle('ffprobe:metadata', async (_e, filePath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, data) => {
+      if (err) reject(err)
+      else resolve({
+        format: { duration: data.format.duration, size: data.format.size, format_name: data.format.format_name },
+        streams: data.streams.map((s) => ({ codec_type: s.codec_type, codec_name: s.codec_name, width: s.width, height: s.height }))
+      })
+    })
+  })
+})
+
+ipcMain.handle('export:trim', async (_e, args) => {
+  const { input, outPath, start, end } = args
+  await fs.promises.mkdir(path.dirname(outPath), { recursive: true })
+  return new Promise((resolve, reject) => {
+    const cmd = ffmpeg(input)
+      .setStartTime(start)
+      .setDuration(Math.max(0, end - start))
+      .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 23', '-c:a aac', '-b:a 128k'])
+      .output(outPath)
+      .on('progress', (p) => { if (win) win.webContents.send('export:progress', p.percent || 0) })
+      .on('end', () => resolve({ ok: true, outPath }))
+      .on('error', (err) => reject(err))
+      .run()
+  })
+})
+

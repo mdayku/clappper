@@ -1,0 +1,55 @@
+{
+  "name": "clappper",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build:electron": "tsc -p electron",
+    "build": "vite build && tsc -p electron",
+    "postinstall": "electron-builder install-app-deps",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "concurrently": "^9.0.0",
+    "electron": "^32.1.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "ffmpeg-static": "^5.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.26",
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.6",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.clappper.app",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "node_modules/**",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/ffmpeg-static/",
+        "to": "ffmpeg/",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": { "category": "public.app-category.video" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}
+

@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src 'self' blob: file: app:; img-src 'self' blob: file: app:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://localhost:* ws://localhost:*" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clappper</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+      button { padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; }
+      button:hover { background: #f0f0f0; }
+      button:active { background: #e0e0e0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/renderer.tsx"></script>
+  </body>
+</html>
+

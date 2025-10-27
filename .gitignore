@@ -1,0 +1,14 @@
+/node_modules
+/dist
+/out
+/.vite
+.DS_Store
+Thumbs.db
+*.log
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.tmp
+/_release
+
