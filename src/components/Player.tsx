@@ -101,11 +101,23 @@ export default function Player() {
   }
 
   if (error) {
+    const handleRemove = () => {
+      if (sel && confirm(`Remove "${sel.name}" from timeline?`)) {
+        useStore.getState().deleteClip(sel.id)
+      }
+    }
+    
     return (
       <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111', color: '#f88', padding: 20, textAlign: 'center' }}>
         <div>
           <div style={{ fontSize: 18, marginBottom: 8 }}>⚠️ {error}</div>
-          <div style={{ fontSize: 12, color: '#999' }}>{sel.path}</div>
+          <div style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>{sel.path}</div>
+          <button 
+            onClick={handleRemove}
+            style={{ padding: '8px 16px', background: '#c00', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+          >
+            Remove This Clip
+          </button>
         </div>
       </div>
     )

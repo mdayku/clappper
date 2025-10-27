@@ -101,6 +101,14 @@ export default function Toolbar() {
     }
   }
 
+  const clearAll = () => {
+    if (clips.length === 0) return
+    if (confirm(`Remove all ${clips.length} clip(s) from timeline?`)) {
+      useStore.getState().setClips([])
+      setError(null)
+    }
+  }
+
   return (
     <div style={{ display:'flex', flexDirection: 'column', borderBottom: '1px solid #eee' }}>
       <div style={{ display:'flex', gap: 8, padding: 8 }}>
@@ -108,13 +116,27 @@ export default function Toolbar() {
         <button onClick={exportSelected} disabled={isExporting || clips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export Selected (Trim)'}
         </button>
+        <button 
+          onClick={clearAll} 
+          disabled={isExporting || clips.length === 0}
+          style={{ marginLeft: 8, color: '#c00' }}
+        >
+          Clear All
+        </button>
         <div style={{ marginLeft: 'auto' }}>
+          {clips.length > 0 && <span style={{ fontSize: 12, color: '#666', marginRight: 12 }}>{clips.length} clip(s)</span>}
           {progress > 0 && progress < 100 ? `Export: ${progress.toFixed(0)}%` : ''}
         </div>
       </div>
       {error && (
-        <div style={{ padding: '4px 8px', background: '#fee', color: '#c00', fontSize: 12, borderTop: '1px solid #fcc' }}>
-          {error}
+        <div style={{ padding: '4px 8px', background: '#fee', color: '#c00', fontSize: 12, borderTop: '1px solid #fcc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{error}</span>
+          <button 
+            onClick={() => setError(null)} 
+            style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px solid #c00', color: '#c00', cursor: 'pointer' }}
+          >
+            Dismiss
+          </button>
         </div>
       )}
     </div>
