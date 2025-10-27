@@ -4,7 +4,7 @@ import { clamp } from '../lib/ff'
 import ClipItem from './ClipItem'
 
 export default function Timeline() {
-  const { clips, setTrim, selectedId, select, reorderClips, deleteClip } = useStore()
+  const { setTrim, selectedId, select, reorderClips, deleteClip } = useStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const sortedClips = useStore.getState().getClipsSorted()
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -17,7 +17,7 @@ export default function Timeline() {
     }
   }, [selectedId, sortedClips.length, select])
   
-  if (clips.length === 0) {
+  if (sortedClips.length === 0) {
     return (
       <div style={{ padding: 16, color: '#999' }}>
         Timeline: (empty) - Import clips to get started
@@ -100,7 +100,7 @@ export default function Timeline() {
     e.preventDefault()
     
     if (draggedIndex !== null && draggedIndex !== index) {
-      reorderClips(draggedIndex, index)
+      reorderClips(draggedIndex, index, 'main') // Main track for now
     }
     
     setDraggedIndex(null)

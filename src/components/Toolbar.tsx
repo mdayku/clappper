@@ -7,7 +7,6 @@ export default function Toolbar() {
   const [isImporting, setIsImporting] = useState(false)
   const [transcodeProgress, setTranscodeProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const { clips } = useStore()
 
   React.useEffect(() => {
     if (window.clappper) {
@@ -107,6 +106,7 @@ export default function Toolbar() {
           start: 0, 
           end: m!.duration,
           order: 0, // Will be reassigned by store
+          trackId: 'main', // Default to main track
           width: m!.width, 
           height: m!.height 
         }
@@ -191,12 +191,15 @@ export default function Toolbar() {
   }
 
   const clearAll = () => {
-    if (clips.length === 0) return
-    if (confirm(`Remove all ${clips.length} clip(s) from timeline?`)) {
+    const allClips = useStore.getState().getAllClips()
+    if (allClips.length === 0) return
+    if (confirm(`Remove all ${allClips.length} clip(s) from timeline?`)) {
       useStore.getState().setClips([])
       setError(null)
     }
   }
+
+  const allClips = useStore.getState().getAllClips()
 
   return (
     <div style={{ display:'flex', flexDirection: 'column', borderBottom: '1px solid #eee' }}>
@@ -204,18 +207,18 @@ export default function Toolbar() {
         <button onClick={onImport} disabled={isExporting || isImporting}>
           {isImporting ? 'Importing...' : 'Import'}
         </button>
-        <button onClick={exportSelected} disabled={isExporting || isImporting || clips.length === 0}>
+        <button onClick={exportSelected} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export Selected (Trim)'}
         </button>
         <button 
           onClick={clearAll} 
-          disabled={isExporting || isImporting || clips.length === 0}
+          disabled={isExporting || isImporting || allClips.length === 0}
           style={{ marginLeft: 8, color: '#c00' }}
         >
           Clear All
         </button>
         <div style={{ marginLeft: 'auto' }}>
-          {clips.length > 0 && <span style={{ fontSize: 12, color: '#666', marginRight: 12 }}>{clips.length} clip(s)</span>}
+          {allClips.length > 0 && <span style={{ fontSize: 12, color: '#666', marginRight: 12 }}>{allClips.length} clip(s)</span>}
           {transcodeProgress > 0 && transcodeProgress < 100 && <span style={{ fontSize: 12, color: '#666', marginRight: 12 }}>Converting: {transcodeProgress.toFixed(0)}%</span>}
           {progress > 0 && progress < 100 && <span style={{ fontSize: 12, color: '#666' }}>Export: {progress.toFixed(0)}%</span>}
         </div>

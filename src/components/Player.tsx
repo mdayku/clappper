@@ -3,7 +3,7 @@ import { useStore } from '../store'
 
 export default function Player() {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const { clips, playhead, setPlayhead, selectedId } = useStore()
+  const { playhead, setPlayhead, selectedId } = useStore()
   const sortedClips = useStore.getState().getClipsSorted()
   const [error, setError] = useState<string | null>(null)
   const [currentClipIndex, setCurrentClipIndex] = useState(0)
@@ -149,7 +149,7 @@ export default function Player() {
     }
   }, [selectedId, sortedClips])
 
-  if (!currentClip || clips.length === 0) {
+  if (!currentClip || sortedClips.length === 0) {
     return (
       <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111', color: '#999' }}>
         Import a clip to preview
