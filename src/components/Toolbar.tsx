@@ -45,15 +45,23 @@ export default function Toolbar() {
         return
       }
       
-      const payload = validMetas.map((m) => ({ 
-        id: crypto.randomUUID(), 
-        path: m!.path, 
-        duration: m!.duration, 
-        start: 0, 
-        end: m!.duration, 
-        width: m!.width, 
-        height: m!.height 
-      }))
+      const payload = validMetas.map((m) => {
+        // Extract filename from path for display name
+        const pathParts = m!.path.split(/[/\\]/)
+        const fileName = pathParts[pathParts.length - 1]
+        
+        return {
+          id: crypto.randomUUID(), 
+          path: m!.path,
+          name: fileName,
+          duration: m!.duration, 
+          start: 0, 
+          end: m!.duration,
+          order: 0, // Will be reassigned by store
+          width: m!.width, 
+          height: m!.height 
+        }
+      })
       useStore.getState().addClips(payload)
     } catch (err) {
       console.error('Import failed:', err)
