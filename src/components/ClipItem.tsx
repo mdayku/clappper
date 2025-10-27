@@ -5,6 +5,7 @@ interface ClipItemProps {
   clip: Clip
   isSelected: boolean
   onSelect: () => void
+  onDelete: () => void
   pixelsPerSecond: number
   onDragStart: (e: React.DragEvent) => void
   onDragOver: (e: React.DragEvent) => void
@@ -16,6 +17,7 @@ export default function ClipItem({
   clip, 
   isSelected, 
   onSelect, 
+  onDelete,
   pixelsPerSecond,
   onDragStart,
   onDragOver,
@@ -24,6 +26,13 @@ export default function ClipItem({
 }: ClipItemProps) {
   const trimmedDuration = clip.end - clip.start
   const width = trimmedDuration * pixelsPerSecond
+  
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation() // Don't trigger onSelect
+    if (confirm(`Delete "${clip.name}"?`)) {
+      onDelete()
+    }
+  }
   
   return (
     <div
@@ -53,12 +62,35 @@ export default function ClipItem({
       }}
     >
       <div style={{ 
-        fontWeight: isSelected ? 'bold' : 'normal',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis'
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
       }}>
-        {clip.name}
+        <div style={{ 
+          fontWeight: isSelected ? 'bold' : 'normal',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          flex: 1
+        }}>
+          {clip.name}
+        </div>
+        <button
+          onClick={handleDelete}
+          style={{
+            background: 'rgba(255,0,0,0.8)',
+            border: 'none',
+            color: 'white',
+            padding: '2px 6px',
+            fontSize: '10px',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            marginLeft: '4px'
+          }}
+          title="Delete clip"
+        >
+          ✕
+        </button>
       </div>
       <div style={{ fontSize: '10px', opacity: 0.9 }}>
         {trimmedDuration.toFixed(1)}s

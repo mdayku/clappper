@@ -4,7 +4,7 @@ import { clamp } from '../lib/ff'
 import ClipItem from './ClipItem'
 
 export default function Timeline() {
-  const { clips, setTrim, selectedId, select, reorderClips } = useStore()
+  const { clips, setTrim, selectedId, select, reorderClips, deleteClip } = useStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const sortedClips = useStore.getState().getClipsSorted()
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -138,6 +138,7 @@ export default function Timeline() {
               clip={clip}
               isSelected={clip.id === selectedId}
               onSelect={() => select(clip.id)}
+              onDelete={() => deleteClip(clip.id)}
               pixelsPerSecond={PIXELS_PER_SECOND}
               onDragStart={handleDragStart(index)}
               onDragOver={handleDragOver(index)}
