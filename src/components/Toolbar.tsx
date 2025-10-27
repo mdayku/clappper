@@ -137,17 +137,31 @@ export default function Toolbar() {
         return
       }
       
+      // Show save dialog
+      const defaultName = sel.name.replace(/\.[^.]+$/, '') + '_exported.mp4'
+      const savePath = await window.clappper.savePath(defaultName)
+      
+      if (!savePath) {
+        // User cancelled
+        return
+      }
+      
       setIsExporting(true)
       setProgress(0)
-      const out = `${sel.path}.trimmed.mp4`
+      
       await window.clappper.exportTrim({ 
         input: sel.path, 
-        outPath: out, 
+        outPath: savePath, 
         start: sel.start, 
         end: sel.end 
       })
-      setIsExporting(false)
-      alert('Export complete:\n' + out)
+      
+      setProgress(100)
+      setTimeout(() => {
+        setProgress(0)
+        setIsExporting(false)
+        alert(`Export complete!\nSaved to: ${savePath}`)
+      }, 500)
     } catch (err) {
       console.error('Export failed:', err)
       setError(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`)

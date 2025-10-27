@@ -71,6 +71,13 @@ ipcMain.handle('dialog:openFiles', async () => {
     });
     return canceled ? [] : filePaths;
 });
+ipcMain.handle('dialog:savePath', async (_e, defaultName) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        defaultPath: defaultName,
+        filters: [{ name: 'Video', extensions: ['mp4'] }]
+    });
+    return canceled ? null : filePath;
+});
 ipcMain.handle('ffprobe:metadata', async (_e, filePath) => {
     return new Promise((resolve, reject) => {
         ffmpeg.ffprobe(filePath, (err, data) => {

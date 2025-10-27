@@ -5,6 +5,7 @@ declare global {
   interface Window {
     clappper: {
       openFiles: () => Promise<string[]>
+      savePath: (defaultName: string) => Promise<string | null>
       ffprobe: (filePath: string) => Promise<{
         format: {
           duration: number
