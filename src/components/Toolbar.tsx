@@ -95,13 +95,13 @@ export default function Toolbar() {
       
       const payload = finalMetas.map((m) => {
         // Extract filename from path for display name
-        const pathParts = (m!.originalPath || m!.path).split(/[/\\]/)
+        const pathParts = ('originalPath' in m! ? m!.originalPath : m!.path).split(/[/\\]/)
         const fileName = pathParts[pathParts.length - 1]
         
         return {
           id: crypto.randomUUID(), 
           path: m!.path,
-          originalPath: m!.originalPath,
+          originalPath: 'originalPath' in m! ? m!.originalPath : undefined,
           name: fileName,
           duration: m!.duration, 
           start: 0, 

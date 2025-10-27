@@ -10,7 +10,7 @@ let win: typeof BrowserWindow.prototype | null = null
 
 // Register custom protocol for serving local video files
 app.whenReady().then(() => {
-  protocol.registerFileProtocol('media', (request, callback) => {
+  protocol.registerFileProtocol('media', (request: any, callback: any) => {
     const url = request.url.substring('media://'.length)
     const decodedPath = decodeURIComponent(url)
     callback({ path: decodedPath })
@@ -32,7 +32,7 @@ const createWindow = async () => {
   })
   
   // Allow media:// protocol in the renderer
-  win.webContents.session.protocol.registerFileProtocol('media', (request, callback) => {
+  win.webContents.session.protocol.registerFileProtocol('media', (request: any, callback: any) => {
     const url = request.url.substring('media://'.length)
     const decodedPath = decodeURIComponent(url)
     callback({ path: decodedPath })
