@@ -6,7 +6,7 @@ const ffmpeg = require('fluent-ffmpeg')
 
 ffmpeg.setFfmpegPath(ffmpegPath)
 
-let win = null
+let win: typeof BrowserWindow.prototype | null = null
 
 const createWindow = async () => {
   const isDev = !app.isPackaged
@@ -62,19 +62,19 @@ ipcMain.handle('dialog:openFiles', async () => {
   return canceled ? [] : filePaths
 })
 
-ipcMain.handle('ffprobe:metadata', async (_e, filePath) => {
+ipcMain.handle('ffprobe:metadata', async (_e: any, filePath: string) => {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, data) => {
+    ffmpeg.ffprobe(filePath, (err: any, data: any) => {
       if (err) reject(err)
       else resolve({
         format: { duration: data.format.duration, size: data.format.size, format_name: data.format.format_name },
-        streams: data.streams.map((s) => ({ codec_type: s.codec_type, codec_name: s.codec_name, width: s.width, height: s.height }))
+        streams: data.streams.map((s: any) => ({ codec_type: s.codec_type, codec_name: s.codec_name, width: s.width, height: s.height }))
       })
     })
   })
 })
 
-ipcMain.handle('export:trim', async (_e, args) => {
+ipcMain.handle('export:trim', async (_e: any, args: { input: string; outPath: string; start: number; end: number }) => {
   const { input, outPath, start, end } = args
   await fs.promises.mkdir(path.dirname(outPath), { recursive: true })
   return new Promise((resolve, reject) => {
@@ -83,9 +83,9 @@ ipcMain.handle('export:trim', async (_e, args) => {
       .setDuration(Math.max(0, end - start))
       .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 23', '-c:a aac', '-b:a 128k'])
       .output(outPath)
-      .on('progress', (p) => { if (win) win.webContents.send('export:progress', p.percent || 0) })
+      .on('progress', (p: any) => { if (win) win.webContents.send('export:progress', p.percent || 0) })
       .on('end', () => resolve({ ok: true, outPath }))
-      .on('error', (err) => reject(err))
+      .on('error', (err: any) => reject(err))
       .run()
   })
 })

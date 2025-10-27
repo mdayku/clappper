@@ -2,11 +2,11 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('clappper', {
   openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
-  ffprobe: (filePath) => ipcRenderer.invoke('ffprobe:metadata', filePath),
-  exportTrim: (payload) => ipcRenderer.invoke('export:trim', payload),
-  onExportProgress: (cb) => {
+  ffprobe: (filePath: string) => ipcRenderer.invoke('ffprobe:metadata', filePath),
+  exportTrim: (payload: { input: string; outPath: string; start: number; end: number }) => ipcRenderer.invoke('export:trim', payload),
+  onExportProgress: (cb: (pct: number) => void) => {
     ipcRenderer.removeAllListeners('export:progress')
-    ipcRenderer.on('export:progress', (_e, pct) => cb(pct))
+    ipcRenderer.on('export:progress', (_e: any, pct: number) => cb(pct))
   }
 })
 
