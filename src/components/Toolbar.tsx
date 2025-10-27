@@ -126,19 +126,25 @@ export default function Toolbar() {
   const exportSelected = async () => {
     try {
       setError(null)
-      const sel = useStore.getState().clips[0]
-      if (!sel) {
-        setError('Please import a clip first')
+      const allClips = useStore.getState().getClipsSorted()
+      
+      if (allClips.length === 0) {
+        setError('Please import clips first')
         return
       }
       
-      if (sel.end <= sel.start) {
-        setError('Invalid trim range: end must be greater than start')
-        return
+      // Validate all clips
+      for (const clip of allClips) {
+        if (clip.end <= clip.start) {
+          setError(`Invalid trim range for "${clip.name}": end must be greater than start`)
+          return
+        }
       }
       
       // Show save dialog
-      const defaultName = sel.name.replace(/\.[^.]+$/, '') + '_exported.mp4'
+      const defaultName = allClips.length === 1 
+        ? allClips[0].name.replace(/\.[^.]+$/, '') + '_exported.mp4'
+        : 'clappper_export.mp4'
       const savePath = await window.clappper.savePath(defaultName)
       
       if (!savePath) {
@@ -149,12 +155,27 @@ export default function Toolbar() {
       setIsExporting(true)
       setProgress(0)
       
-      await window.clappper.exportTrim({ 
-        input: sel.path, 
-        outPath: savePath, 
-        start: sel.start, 
-        end: sel.end 
-      })
+      if (allClips.length === 1) {
+        // Single clip: use trim export
+        await window.clappper.exportTrim({ 
+          input: allClips[0].path, 
+          outPath: savePath, 
+          start: allClips[0].start, 
+          end: allClips[0].end 
+        })
+      } else {
+        // Multiple clips: concatenate
+        const clipSegments = allClips.map(clip => ({
+          input: clip.path,
+          start: clip.start,
+          end: clip.end
+        }))
+        
+        await window.clappper.exportConcat({
+          clips: clipSegments,
+          outPath: savePath
+        })
+      }
       
       setProgress(100)
       setTimeout(() => {

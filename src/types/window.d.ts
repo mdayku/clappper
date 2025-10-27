@@ -29,6 +29,10 @@ declare global {
         start: number
         end: number
       }) => Promise<{ ok: boolean; outPath: string }>
+      exportConcat: (payload: {
+        clips: Array<{input: string; start: number; end: number}>
+        outPath: string
+      }) => Promise<{ ok: boolean; outPath: string }>
       onExportProgress: (callback: (percent: number) => void) => void
       onTranscodeProgress: (callback: (percent: number) => void) => void
     }

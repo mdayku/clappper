@@ -138,3 +138,73 @@ ipcMain.handle('export:trim', async (_e: any, args: { input: string; outPath: st
   })
 })
 
+ipcMain.handle('export:concat', async (_e: any, args: { clips: Array<{input: string; start: number; end: number}>; outPath: string }) => {
+  const { clips: clipSegments, outPath } = args
+  await fs.promises.mkdir(path.dirname(outPath), { recursive: true })
+  
+  // Create temp directory for intermediate files
+  const tempDir = path.join(path.dirname(outPath), '.clappper_temp_' + Date.now())
+  await fs.promises.mkdir(tempDir, { recursive: true })
+  
+  try {
+    // Step 1: Create trimmed segments for each clip
+    const segmentFiles: string[] = []
+    
+    for (let i = 0; i < clipSegments.length; i++) {
+      const segment = clipSegments[i]
+      const segmentPath = path.join(tempDir, `segment_${i}.mp4`)
+      
+      await new Promise((resolve, reject) => {
+        ffmpeg(segment.input)
+          .setStartTime(segment.start)
+          .setDuration(Math.max(0, segment.end - segment.start))
+          .outputOptions([
+            '-c:v libx264',
+            '-preset veryfast',
+            '-crf 23',
+            '-c:a aac',
+            '-b:a 128k',
+            '-movflags +faststart'
+          ])
+          .output(segmentPath)
+          .on('end', () => resolve(null))
+          .on('error', (err: any) => reject(err))
+          .run()
+      })
+      
+      segmentFiles.push(segmentPath)
+    }
+    
+    // Step 2: Create concat file list
+    const concatListPath = path.join(tempDir, 'concat.txt')
+    const concatList = segmentFiles.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n')
+    await fs.promises.writeFile(concatListPath, concatList, 'utf8')
+    
+    // Step 3: Concatenate all segments
+    await new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .outputOptions(['-c', 'copy'])
+        .output(outPath)
+        .on('progress', (p: any) => { if (win) win.webContents.send('export:progress', p.percent || 0) })
+        .on('end', () => resolve(null))
+        .on('error', (err: any) => reject(err))
+        .run()
+    })
+    
+    // Step 4: Cleanup temp files
+    await fs.promises.rm(tempDir, { recursive: true, force: true })
+    
+    return { ok: true, outPath }
+  } catch (err) {
+    // Cleanup on error
+    try {
+      await fs.promises.rm(tempDir, { recursive: true, force: true })
+    } catch (cleanupErr) {
+      console.error('Cleanup error:', cleanupErr)
+    }
+    throw err
+  }
+})
+

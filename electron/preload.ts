@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('clappper', {
   ffprobe: (filePath: string) => ipcRenderer.invoke('ffprobe:metadata', filePath),
   transcode: (payload: { input: string; output: string }) => ipcRenderer.invoke('transcode:h264', payload),
   exportTrim: (payload: { input: string; outPath: string; start: number; end: number }) => ipcRenderer.invoke('export:trim', payload),
+  exportConcat: (payload: { clips: Array<{input: string; start: number; end: number}>; outPath: string }) => ipcRenderer.invoke('export:concat', payload),
   onExportProgress: (cb: (pct: number) => void) => {
     ipcRenderer.removeAllListeners('export:progress')
     ipcRenderer.on('export:progress', (_e: any, pct: number) => cb(pct))
