@@ -1,19 +1,29 @@
-import React, { useRef } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import { clamp } from '../lib/ff'
+import ClipItem from './ClipItem'
 
 export default function Timeline() {
-  const { clips, setTrim } = useStore()
-  const sel = clips[0]
+  const { clips, setTrim, selectedId, select } = useStore()
   const containerRef = useRef<HTMLDivElement>(null)
+  const sortedClips = useStore.getState().getClipsSorted()
   
-  if (!sel) {
+  // Auto-select first clip if nothing selected (must be before early return)
+  useEffect(() => {
+    if (!selectedId && sortedClips.length > 0) {
+      select(sortedClips[0].id)
+    }
+  }, [selectedId, sortedClips.length, select])
+  
+  if (clips.length === 0) {
     return (
       <div style={{ padding: 16, color: '#999' }}>
         Timeline: (empty) - Import clips to get started
       </div>
     )
   }
+
+  const sel = sortedClips.find(c => c.id === selectedId) || sortedClips[0]
 
   // Safety checks
   if (sel.duration <= 0) {
@@ -66,9 +76,47 @@ export default function Timeline() {
 
   const trimmedDuration = sel.end - sel.start
   const percentTrimmed = ((sel.duration - trimmedDuration) / sel.duration * 100).toFixed(1)
+  
+  // Calculate total duration and scale to fit in ~1000px max
+  const totalDuration = sortedClips.reduce((sum, c) => sum + (c.end - c.start), 0)
+  const maxTimelineWidth = 1000
+  const PIXELS_PER_SECOND = Math.min(50, maxTimelineWidth / totalDuration)
 
   return (
     <div style={{ padding: 16 }}>
+      {/* Clips Timeline */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold' }}>
+          CLIPS TIMELINE ({sortedClips.length} clip{sortedClips.length !== 1 ? 's' : ''})
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          gap: 8, 
+          padding: 12, 
+          background: '#f8f9fa', 
+          border: '1px solid #ddd',
+          borderRadius: 4,
+          overflowX: 'auto',
+          minHeight: 80
+        }}>
+          {sortedClips.map(clip => (
+            <ClipItem
+              key={clip.id}
+              clip={clip}
+              isSelected={clip.id === selectedId}
+              onSelect={() => select(clip.id)}
+              pixelsPerSecond={PIXELS_PER_SECOND}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Trim Controls for Selected Clip */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold' }}>
+          TRIM SELECTED CLIP: {sel.name}
+        </div>
+      </div>
       <div ref={containerRef} style={{ width, height: 64, position:'relative', background:'#fafafa', border:'1px solid #ddd', margin:'8px 0', userSelect: 'none' }}>
         {/* Full duration background */}
         <div style={{ position:'absolute', left: 0, width: '100%', top:0, bottom:0, background:'#f0f0f0' }} />

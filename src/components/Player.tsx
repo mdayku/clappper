@@ -3,8 +3,9 @@ import { useStore } from '../store'
 
 export default function Player() {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const { clips, playhead, setPlayhead } = useStore()
-  const sel = clips[0]
+  const { clips, playhead, setPlayhead, selectedId } = useStore()
+  const sortedClips = useStore.getState().getClipsSorted()
+  const sel = sortedClips.find(c => c.id === selectedId) || sortedClips[0]
   const [error, setError] = useState<string | null>(null)
   const trimBoundsRef = useRef({ start: 0, end: 0 })
   const prevTrimRef = useRef({ start: 0, end: 0 })
@@ -115,7 +116,7 @@ export default function Player() {
     }
   }, [sel?.start, sel?.end])
 
-  if (!sel) {
+  if (!sel || clips.length === 0) {
     return (
       <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111', color: '#999' }}>
         Import a clip to preview

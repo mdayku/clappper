@@ -33,7 +33,10 @@ export const useStore = create<State>((set, get) => ({
   addClips: (c) => set(s => {
     const maxOrder = s.clips.length > 0 ? Math.max(...s.clips.map(cl => cl.order)) : -1
     const newClips = c.map((clip, i) => ({ ...clip, order: maxOrder + 1 + i }))
-    return { clips: sortClips([...s.clips, ...newClips]) }
+    const allClips = sortClips([...s.clips, ...newClips])
+    // Auto-select first clip if nothing selected
+    const selectedId = s.selectedId || (allClips.length > 0 ? allClips[0].id : undefined)
+    return { clips: allClips, selectedId }
   }),
   
   setTrim: (id, start, end) => set(s => ({

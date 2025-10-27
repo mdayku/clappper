@@ -183,13 +183,14 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Tasks**:
 - [x] **2.1**: Update store to handle array of clips with `order` property, add `reorderClips()`, `splitClip()`, `deleteClip()` actions
 - [x] **2.2**: Add codec detection and automatic transcoding (H.265 → H.264) for unsupported formats
-- [ ] **2.3**: Render multiple clips on timeline as sequential boxes
-- [ ] **2.4**: Implement drag-to-reorder (update `order` on drop)
-- [ ] **2.5**: Calculate total sequence duration from all clips
-- [ ] **2.6**: Update preview player to play sequence (switch video src as playhead crosses boundaries)
-- [ ] **2.7**: Implement "split at playhead" (duplicate clip, adjust start/end)
-- [ ] **2.8**: Implement delete clip UI (button/keyboard shortcut)
-- [ ] **2.9**: Update export to concatenate multiple clips
+- [x] **2.3**: Render multiple clips on timeline as sequential boxes (✅ Complete - clips render, selection works)
+- [ ] **2.4**: Add "Save As" dialog for export (choose location/filename before exporting)
+- [ ] **2.5**: Implement drag-to-reorder (update `order` on drop)
+- [ ] **2.6**: Calculate total sequence duration from all clips
+- [ ] **2.7**: Update preview player to play sequence (switch video src as playhead crosses boundaries)
+- [ ] **2.8**: Implement "split at playhead" (duplicate clip, adjust start/end)
+- [ ] **2.9**: Implement delete clip UI (button/keyboard shortcut)
+- [ ] **2.10**: Update export to concatenate multiple clips (currently only exports selected clip)
 
 **Components**:
 - `Timeline.tsx`: Render clip boxes horizontally
