@@ -18,6 +18,10 @@ declare global {
           height?: number
         }>
       }>
+      transcode: (payload: {
+        input: string
+        output: string
+      }) => Promise<{ ok: boolean; output: string }>
       exportTrim: (payload: {
         input: string
         outPath: string
@@ -25,6 +29,7 @@ declare global {
         end: number
       }) => Promise<{ ok: boolean; outPath: string }>
       onExportProgress: (callback: (percent: number) => void) => void
+      onTranscodeProgress: (callback: (percent: number) => void) => void
     }
   }
 }

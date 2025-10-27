@@ -23,11 +23,26 @@ export default function Player() {
     
     setError(null)
     
-    // Convert Windows path to proper file URL with encoding
-    const fileUrl = sel.path.startsWith('file://') 
-      ? sel.path 
-      : `file:///${sel.path.replace(/\\/g, '/').replace(/ /g, '%20')}`
+    // Use file:// protocol with proper Windows path handling
+    // All videos are transcoded to H.264 on import for guaranteed compatibility
+    let fileUrl = sel.path
+    if (!fileUrl.startsWith('file://')) {
+      fileUrl = fileUrl.replace(/\\/g, '/')
+      const isWindowsAbsolute = /^[A-Za-z]:/.test(fileUrl)
+      if (isWindowsAbsolute) {
+        const parts = fileUrl.split('/')
+        const encodedParts = parts.map((part, i) => 
+          i === 0 ? part : encodeURIComponent(part)
+        )
+        fileUrl = 'file:///' + encodedParts.join('/')
+      } else {
+        if (!fileUrl.startsWith('/')) fileUrl = '/' + fileUrl
+        const parts = fileUrl.split('/')
+        fileUrl = 'file://' + parts.map(part => encodeURIComponent(part)).join('/')
+      }
+    }
     
+    console.log('Loading video from:', fileUrl)
     v.src = fileUrl
     
     const onTime = () => {
@@ -41,8 +56,16 @@ export default function Player() {
       }
     }
     const onError = (e: Event) => {
-      console.error('Video load error:', e)
-      setError('Failed to load video. File may be corrupted or unsupported.')
+      console.error('Video load error for:', fileUrl, e)
+      const target = e.target as HTMLVideoElement
+      if (target.error) {
+        const errorCodes = ['MEDIA_ERR_ABORTED', 'MEDIA_ERR_NETWORK', 'MEDIA_ERR_DECODE', 'MEDIA_ERR_SRC_NOT_SUPPORTED']
+        const errorMsg = errorCodes[target.error.code - 1] || 'Unknown error'
+        console.error('MediaError:', errorMsg, target.error.message)
+        setError(`Failed to load video: ${errorMsg}. The file may be corrupted or codec unsupported by Chromium.`)
+      } else {
+        setError('Failed to load video. File may be corrupted or unsupported.')
+      }
     }
     const onLoadedMetadata = () => {
       // Seek to start point when video loads

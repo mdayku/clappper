@@ -181,19 +181,20 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Goal**: Support multiple clips on a single track with reordering
 
 **Tasks**:
-- [ ] Update store to handle array of clips with `order` property
-- [ ] Render multiple clips on timeline as sequential boxes
-- [ ] Implement drag-to-reorder (update `order` on drop)
-- [ ] Calculate total sequence duration from all clips
-- [ ] Update preview player to play sequence (switch video src as playhead crosses boundaries)
-- [ ] Implement "split at playhead" (duplicate clip, adjust start/end)
-- [ ] Implement delete clip (remove from array)
-- [ ] Update export to concatenate multiple clips
+- [x] **2.1**: Update store to handle array of clips with `order` property, add `reorderClips()`, `splitClip()`, `deleteClip()` actions
+- [x] **2.2**: Add codec detection and automatic transcoding (H.265 → H.264) for unsupported formats
+- [ ] **2.3**: Render multiple clips on timeline as sequential boxes
+- [ ] **2.4**: Implement drag-to-reorder (update `order` on drop)
+- [ ] **2.5**: Calculate total sequence duration from all clips
+- [ ] **2.6**: Update preview player to play sequence (switch video src as playhead crosses boundaries)
+- [ ] **2.7**: Implement "split at playhead" (duplicate clip, adjust start/end)
+- [ ] **2.8**: Implement delete clip UI (button/keyboard shortcut)
+- [ ] **2.9**: Update export to concatenate multiple clips
 
 **Components**:
 - `Timeline.tsx`: Render clip boxes horizontally
 - `ClipItem.tsx`: Individual draggable clip with thumbnail
-- `store.ts`: Add `reorderClips()`, `splitClip()`, `deleteClip()`
+- `store.ts`: ✅ Actions implemented (reorderClips, splitClip, deleteClip, getClipsSorted, getTotalDuration)
 
 **Timeline Visual**:
 ```
@@ -257,7 +258,7 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 trim_thumb.jpg
 
 **Tasks**:
 - [ ] Add export settings panel/modal in UI
-- [ ] Add radio buttons: 720p / 1080p / Source
+- [ ] Add radio buttons: 360p / 480p / 720p / 1080p / Source
 - [ ] Store selection in Zustand state
 - [ ] Update ffmpeg command to include resolution scaling
 - [ ] Add preset dropdown: Fast / Medium / Slow (maps to veryfast/medium/slow)
@@ -268,6 +269,8 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 trim_thumb.jpg
 │ Export Settings          │
 ├──────────────────────────┤
 │ Resolution:              │
+│  ○ 360p (Low)           │
+│  ○ 480p (SD)            │
 │  ○ 720p (HD)            │
 │  ● 1080p (Full HD)      │
 │  ○ Source (no scale)    │
@@ -289,6 +292,7 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 trim_thumb.jpg
 - [ ] Add error handling for export failures (disk space, permissions)
 - [ ] Show loading spinner during metadata extraction
 - [ ] Add cancel button for exports
+- [ ] Add dynamic player zoom/canvas resizing for low-resolution videos (scale up to fit player area)
 - [ ] Test on Windows (NSIS installer)
 - [ ] Test on Mac (DMG)
 - [ ] Add app icon (icon.png → icon.ico / icon.icns)

@@ -1,10 +1,18 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const ffmpegPath = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegPath);
 let win = null;
+// Register custom protocol for serving local video files
+app.whenReady().then(() => {
+    protocol.registerFileProtocol('media', (request, callback) => {
+        const url = request.url.substring('media://'.length);
+        const decodedPath = decodeURIComponent(url);
+        callback({ path: decodedPath });
+    });
+});
 const createWindow = async () => {
     const isDev = !app.isPackaged;
     win = new BrowserWindow({
@@ -16,6 +24,12 @@ const createWindow = async () => {
             nodeIntegration: false,
             webSecurity: !isDev // Disable webSecurity ONLY in dev mode for local file access
         }
+    });
+    // Allow media:// protocol in the renderer
+    win.webContents.session.protocol.registerFileProtocol('media', (request, callback) => {
+        const url = request.url.substring('media://'.length);
+        const decodedPath = decodeURIComponent(url);
+        callback({ path: decodedPath });
     });
     // In dev mode, connect to Vite server (check multiple ports)
     if (isDev) {
@@ -68,6 +82,29 @@ ipcMain.handle('ffprobe:metadata', async (_e, filePath) => {
                     streams: data.streams.map((s) => ({ codec_type: s.codec_type, codec_name: s.codec_name, width: s.width, height: s.height }))
                 });
         });
+    });
+});
+ipcMain.handle('transcode:h264', async (_e, args) => {
+    const { input, output } = args;
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+    return new Promise((resolve, reject) => {
+        ffmpeg(input)
+            .outputOptions([
+            '-c:v libx264', // H.264 codec (universally supported)
+            '-preset fast', // Faster encoding
+            '-crf 23', // Good quality
+            '-c:a aac', // AAC audio
+            '-b:a 128k', // Audio bitrate
+            '-movflags +faststart' // Enable streaming/seeking
+        ])
+            .output(output)
+            .on('progress', (p) => {
+            if (win)
+                win.webContents.send('transcode:progress', p.percent || 0);
+        })
+            .on('end', () => resolve({ ok: true, output }))
+            .on('error', (err) => reject(err))
+            .run();
     });
 });
 ipcMain.handle('export:trim', async (_e, args) => {

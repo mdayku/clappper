@@ -2,6 +2,7 @@ export type Clip = {
   id: string
   path: string
   name: string  // Display name for the clip
+  originalPath?: string  // Original file path (if transcoded)
   duration: number
   start: number // trim-in seconds
   end: number   // trim-out seconds
