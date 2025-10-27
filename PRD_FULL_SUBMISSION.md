@@ -181,16 +181,18 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Goal**: Support multiple clips on a single track with reordering
 
 **Tasks**:
-- [x] **2.1**: Update store to handle array of clips with `order` property, add `reorderClips()`, `splitClip()`, `deleteClip()` actions
-- [x] **2.2**: Add codec detection and automatic transcoding (H.265 → H.264) for unsupported formats
-- [x] **2.3**: Render multiple clips on timeline as sequential boxes (✅ Complete - clips render, selection works)
-- [x] **2.4**: Add "Save As" dialog for export (choose location/filename before exporting)
-- [x] **2.5**: Implement drag-to-reorder (update `order` on drop)
-- [x] **2.6**: Calculate total sequence duration from all clips
-- [ ] **2.7**: Implement delete clip UI (button/keyboard shortcut)
-- [ ] **2.8**: Update export to concatenate multiple clips (currently only exports selected clip)
-- [ ] **2.9**: Implement "split at playhead" (duplicate clip, adjust start/end)
-- [ ] **2.10**: Update preview player to play sequence (switch video src as playhead crosses boundaries)
+- [x] **2.1**: Update store to handle array of clips with `order` property, add `reorderClips()`, `splitClip()`, `deleteClip()` actions ✅
+- [x] **2.2**: Add codec detection and automatic transcoding (H.265 → H.264) for unsupported formats ✅
+- [x] **2.3**: Render multiple clips on timeline as sequential boxes ✅
+- [x] **2.4**: Add "Save As" dialog for export (choose location/filename before exporting) ✅
+- [x] **2.5**: Implement drag-to-reorder (update `order` on drop) ✅
+- [x] **2.6**: Calculate total sequence duration from all clips ✅
+- [x] **2.7**: Implement delete clip UI (button/keyboard shortcut) ✅
+- [x] **2.8**: Update export to concatenate multiple clips ✅
+- [x] **2.9**: Implement "split at playhead" (duplicate clip, adjust start/end) ✅
+- [x] **2.10**: Update preview player to play sequence (switch video src as playhead crosses boundaries) ✅
+
+**Status**: ✅ **PHASE 2 COMPLETE!** All 10 tasks implemented and tested.
 
 **Components**:
 - `Timeline.tsx`: Render clip boxes horizontally
