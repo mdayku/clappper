@@ -151,8 +151,38 @@ export default function Timeline() {
 
       {/* Trim Controls for Selected Clip */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold' }}>
-          TRIM SELECTED CLIP: {sel.name}
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>TRIM SELECTED CLIP: {sel.name}</span>
+          <button
+            onClick={() => {
+              const { playhead } = useStore.getState()
+              // Playhead is relative to clip's start
+              const splitTime = sel.start + playhead
+              
+              // Validate split time is within clip bounds
+              if (splitTime <= sel.start || splitTime >= sel.end) {
+                alert('Playhead must be between clip start and end to split')
+                return
+              }
+              
+              if (confirm(`Split "${sel.name}" at ${(splitTime - sel.start).toFixed(2)}s?`)) {
+                useStore.getState().splitClip(sel.id, splitTime)
+              }
+            }}
+            style={{
+              padding: '4px 12px',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 'bold'
+            }}
+            title="Split clip at current playhead position"
+          >
+            Split at Playhead
+          </button>
         </div>
       </div>
       <div ref={containerRef} style={{ width, height: 64, position:'relative', background:'#fafafa', border:'1px solid #ddd', margin:'8px 0', userSelect: 'none' }}>

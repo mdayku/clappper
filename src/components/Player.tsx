@@ -5,28 +5,30 @@ export default function Player() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const { clips, playhead, setPlayhead, selectedId } = useStore()
   const sortedClips = useStore.getState().getClipsSorted()
-  const sel = sortedClips.find(c => c.id === selectedId) || sortedClips[0]
   const [error, setError] = useState<string | null>(null)
-  const trimBoundsRef = useRef({ start: 0, end: 0 })
-  const prevTrimRef = useRef({ start: 0, end: 0 })
+  const [currentClipIndex, setCurrentClipIndex] = useState(0)
+  const isPlayingSequence = useRef(false)
 
-  // Update trim bounds ref when they change
-  useEffect(() => {
-    if (sel) {
-      trimBoundsRef.current = { start: sel.start, end: sel.end }
+  // Calculate cumulative start times for each clip in the sequence
+  const clipTimings = sortedClips.map((clip, index) => {
+    const prevClips = sortedClips.slice(0, index)
+    const cumulativeStart = prevClips.reduce((sum, c) => sum + (c.end - c.start), 0)
+    const duration = clip.end - clip.start
+    return {
+      clip,
+      cumulativeStart,
+      cumulativeEnd: cumulativeStart + duration,
+      duration
     }
-  }, [sel?.start, sel?.end])
+  })
 
-  // Load video when path changes
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v || !sel) return
-    
-    setError(null)
-    
-    // Use file:// protocol with proper Windows path handling
-    // All videos are transcoded to H.264 on import for guaranteed compatibility
-    let fileUrl = sel.path
+  // Get current clip to display
+  const currentTiming = clipTimings[currentClipIndex]
+  const currentClip = currentTiming?.clip
+
+  // Helper to load a file URL
+  const getFileUrl = (path: string) => {
+    let fileUrl = path
     if (!fileUrl.startsWith('file://')) {
       fileUrl = fileUrl.replace(/\\/g, '/')
       const isWindowsAbsolute = /^[A-Za-z]:/.test(fileUrl)
@@ -42,81 +44,112 @@ export default function Player() {
         fileUrl = 'file://' + parts.map(part => encodeURIComponent(part)).join('/')
       }
     }
+    return fileUrl
+  }
+
+  // Load video when current clip changes
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !currentClip) return
     
-    console.log('Loading video from:', fileUrl)
+    setError(null)
+    
+    const fileUrl = getFileUrl(currentClip.path)
+    console.log('Loading clip', currentClipIndex + 1, '/', sortedClips.length, ':', fileUrl)
     v.src = fileUrl
     
-    const onTime = () => {
-      const currentTime = v.currentTime
-      setPlayhead(currentTime)
-      // Auto-stop at trim end
-      const { start, end } = trimBoundsRef.current
-      if (currentTime >= end) {
-        v.currentTime = start
-        v.pause()
-      }
-    }
     const onError = (e: Event) => {
       console.error('Video load error for:', fileUrl, e)
       const target = e.target as HTMLVideoElement
       if (target.error) {
         const errorCodes = ['MEDIA_ERR_ABORTED', 'MEDIA_ERR_NETWORK', 'MEDIA_ERR_DECODE', 'MEDIA_ERR_SRC_NOT_SUPPORTED']
         const errorMsg = errorCodes[target.error.code - 1] || 'Unknown error'
-        console.error('MediaError:', errorMsg, target.error.message)
-        setError(`Failed to load video: ${errorMsg}. The file may be corrupted or codec unsupported by Chromium.`)
+        setError(`Failed to load video: ${errorMsg}`)
       } else {
-        setError('Failed to load video. File may be corrupted or unsupported.')
-      }
-    }
-    const onLoadedMetadata = () => {
-      // Seek to start point when video loads
-      v.currentTime = trimBoundsRef.current.start
-    }
-    const onPlay = () => {
-      // Ensure playback starts from trim start if before it
-      const { start } = trimBoundsRef.current
-      if (v.currentTime < start) {
-        v.currentTime = start
+        setError('Failed to load video')
       }
     }
     
-    v.addEventListener('timeupdate', onTime)
+    const onLoadedMetadata = () => {
+      // Seek to clip's trim start
+      v.currentTime = currentClip.start
+    }
+
     v.addEventListener('error', onError)
     v.addEventListener('loadedmetadata', onLoadedMetadata)
-    v.addEventListener('play', onPlay)
     
     return () => {
-      v.removeEventListener('timeupdate', onTime)
       v.removeEventListener('error', onError)
       v.removeEventListener('loadedmetadata', onLoadedMetadata)
-      v.removeEventListener('play', onPlay)
     }
-  }, [sel?.path, setPlayhead]) // Only path dependency - no reload on trim changes
+  }, [currentClip?.path, currentClipIndex])
 
-  // Seek video when trim points change
+  // Handle playback and sequence switching
   useEffect(() => {
     const v = videoRef.current
-    if (!v || !sel) return
-    
-    // Only update if video is paused to avoid disrupting playback
-    if (v.paused) {
-      const prev = prevTrimRef.current
-      
-      // Determine which handle changed
-      if (sel.start !== prev.start) {
-        // Start handle moved - show start frame
-        v.currentTime = sel.start
-      } else if (sel.end !== prev.end) {
-        // End handle moved - show end frame (minus a tiny bit to stay within bounds)
-        v.currentTime = Math.max(sel.start, sel.end - 0.1)
-      }
-      
-      // Update previous values
-      prevTrimRef.current = { start: sel.start, end: sel.end }
-    }
-  }, [sel?.start, sel?.end])
+    if (!v || !currentClip || !currentTiming) return
 
-  if (!sel || clips.length === 0) {
+    const onTimeUpdate = () => {
+      const localTime = v.currentTime
+      const clipProgress = localTime - currentClip.start
+      const sequenceTime = currentTiming.cumulativeStart + clipProgress
+      
+      setPlayhead(sequenceTime)
+
+      // Check if we've reached the end of the current clip
+      if (localTime >= currentClip.end) {
+        // Move to next clip if available
+        if (currentClipIndex < sortedClips.length - 1) {
+          console.log('Switching to next clip:', currentClipIndex + 2, '/', sortedClips.length)
+          setCurrentClipIndex(currentClipIndex + 1)
+          isPlayingSequence.current = true // Remember we were playing
+        } else {
+          // End of sequence
+          v.pause()
+          setPlayhead(clipTimings[clipTimings.length - 1]?.cumulativeEnd || 0)
+        }
+      }
+    }
+
+    const onPlay = () => {
+      // Ensure we start from clip's trim start
+      if (v.currentTime < currentClip.start) {
+        v.currentTime = currentClip.start
+      }
+    }
+
+    const onLoadedMetadata = () => {
+      v.currentTime = currentClip.start
+      // If we were playing and switched clips, continue playing
+      if (isPlayingSequence.current) {
+        v.play()
+        isPlayingSequence.current = false
+      }
+    }
+
+    v.addEventListener('timeupdate', onTimeUpdate)
+    v.addEventListener('play', onPlay)
+    v.addEventListener('loadedmetadata', onLoadedMetadata)
+
+    return () => {
+      v.removeEventListener('timeupdate', onTimeUpdate)
+      v.removeEventListener('play', onPlay)
+      v.removeEventListener('loadedmetadata', onLoadedMetadata)
+    }
+  }, [currentClip, currentClipIndex, currentTiming, sortedClips.length])
+
+  // When user selects a different clip, jump to it
+  useEffect(() => {
+    if (!selectedId) return
+    const index = sortedClips.findIndex(c => c.id === selectedId)
+    if (index !== -1 && index !== currentClipIndex) {
+      const v = videoRef.current
+      if (v) v.pause() // Pause before switching
+      setCurrentClipIndex(index)
+    }
+  }, [selectedId, sortedClips])
+
+  if (!currentClip || clips.length === 0) {
     return (
       <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111', color: '#999' }}>
         Import a clip to preview
@@ -126,8 +159,8 @@ export default function Player() {
 
   if (error) {
     const handleRemove = () => {
-      if (sel && confirm(`Remove "${sel.name}" from timeline?`)) {
-        useStore.getState().deleteClip(sel.id)
+      if (currentClip && confirm(`Remove "${currentClip.name}" from timeline?`)) {
+        useStore.getState().deleteClip(currentClip.id)
       }
     }
     
@@ -135,7 +168,7 @@ export default function Player() {
       <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111', color: '#f88', padding: 20, textAlign: 'center' }}>
         <div>
           <div style={{ fontSize: 18, marginBottom: 8 }}>⚠️ {error}</div>
-          <div style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>{sel.path}</div>
+          <div style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>{currentClip.path}</div>
           <button 
             onClick={handleRemove}
             style={{ padding: '8px 16px', background: '#c00', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
@@ -147,10 +180,18 @@ export default function Player() {
     )
   }
 
+  const totalDuration = clipTimings[clipTimings.length - 1]?.cumulativeEnd || 0
+
   return (
-    <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111' }}>
-      <video ref={videoRef} controls style={{ maxWidth:'100%', maxHeight:'100%' }} />
+    <div style={{ display:'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display:'grid', placeItems:'center', height: 420, background:'#111' }}>
+        <video ref={videoRef} controls style={{ maxWidth:'100%', maxHeight:'100%' }} />
+      </div>
+      <div style={{ padding: '8px 16px', background: '#f8f9fa', fontSize: 12, color: '#666' }}>
+        <strong>Sequence:</strong> Clip {currentClipIndex + 1} of {sortedClips.length} | 
+        <strong> Playing:</strong> {currentClip.name} | 
+        <strong> Total:</strong> {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toFixed(1).padStart(4, '0')}
+      </div>
     </div>
   )
 }
-
