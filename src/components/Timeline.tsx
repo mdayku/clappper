@@ -116,8 +116,11 @@ export default function Timeline() {
     <div style={{ padding: 16 }}>
       {/* Clips Timeline */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold' }}>
-          CLIPS TIMELINE ({sortedClips.length} clip{sortedClips.length !== 1 ? 's' : ''})
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>CLIPS TIMELINE ({sortedClips.length} clip{sortedClips.length !== 1 ? 's' : ''})</span>
+          <span style={{ fontWeight: 'normal', color: '#1e90ff' }}>
+            Total Duration: {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toFixed(1).padStart(4, '0')}
+          </span>
         </div>
         <div style={{ 
           display: 'flex', 
