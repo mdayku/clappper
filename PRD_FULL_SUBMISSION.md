@@ -139,31 +139,74 @@ Exposed to renderer as `window.clappper`:
 - `exportTrim(payload)` - Export trimmed clip
 - `onExportProgress(callback)` - Listen for export progress
 
-### Export Pipeline
+### Export Pipeline (Normalization Contract)
 
-**Simple Trim (Single Clip)**:
+**Critical Requirements for Stable Exports:**
+
+All exports MUST normalize to:
+- **Video**: H.264 (libx264), yuv420p, CFR 30fps (or source fps rounded)
+- **Audio**: AAC, 48kHz, stereo 2ch, async resampling
+- **Timebase**: Frame-accurate trims use `-ss` after `-i` (slower but accurate)
+
+**Export Decision Tree:**
+
+1. **Single Clip Trim**:
 ```bash
-ffmpeg -i input.mp4 -ss START -t DURATION -c:v libx264 -preset fast -crf 23 -c:a aac out.mp4
+ffmpeg -i input.mp4 -ss START -t DURATION \
+  -c:v libx264 -preset veryfast -crf 23 \
+  -pix_fmt yuv420p -vf "fps=30,format=yuv420p" \
+  -c:a aac -ar 48000 -ac 2 -b:a 128k \
+  -af "aresample=async=1:first_pts=0" \
+  output.mp4
 ```
 
-**Multi-Clip Concat (Same Codec)**:
+2. **Multi-Clip Concat (Decision)**:
+   - **IF** all clips are H.264/AAC/yuv420p/CFR/48kHz → Use concat demuxer (`-c copy`)
+   - **ELSE** → Normalize each segment first, then concat
+
+**Normalization Path (Most Stable)**:
 ```bash
-# Create concat.txt with file list
-ffmpeg -f concat -safe 0 -i concat.txt -c copy out.mp4
+# Step 1: Normalize each segment to temp folder
+for each clip:
+  ffmpeg -i input.mp4 -ss START -t DURATION \
+    -c:v libx264 -preset veryfast -crf 23 \
+    -pix_fmt yuv420p -vf "fps=30,format=yuv420p" \
+    -c:a aac -ar 48000 -ac 2 -b:a 128k \
+    -af "aresample=async=1:first_pts=0" \
+    temp/segment_N.mp4
+
+# Step 2: Create concat list
+echo "file 'segment_0.mp4'" > concat.txt
+echo "file 'segment_1.mp4'" >> concat.txt
+
+# Step 3: Concat with copy (fast, lossless)
+ffmpeg -f concat -safe 0 -i concat.txt -c copy output.mp4
 ```
 
-**Multi-Clip Concat (Different Codecs)**:
+**PiP Overlay (Two Tracks)** - Phase 3:
 ```bash
-# Re-encode all segments to matching params, then concat
-ffmpeg -i input1.mp4 -i input2.mp4 -filter_complex "[0:v][1:v]concat=n=2:v=1:a=1" out.mp4
-```
-
-**PiP Overlay (Two Tracks)**:
-```bash
+# Bottom-right preset (25% size, 16px padding)
 ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
-  "[1:v]scale=320:180[pip];[0:v][pip]overlay=W-w-10:H-h-10" \
-  -c:a copy out.mp4
+  "[1:v]scale=iw*0.25:-2[pip]; \
+   [0:v][pip]overlay=W-w-16:H-h-16:eval=init,format=yuv420p[v]" \
+  -map "[v]" -map 0:a \
+  -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p \
+  -c:a aac -ar 48000 -ac 2 -b:a 128k \
+  -shortest \
+  output.mp4
+
+# Other presets:
+# Top-left:    overlay=16:16
+# Top-right:   overlay=W-w-16:16
+# Bottom-left: overlay=16:H-h-16
+# Center:      overlay=(W-w)/2:(H-h)/2
 ```
+
+**VFR → CFR Handling**:
+- Some phone videos are Variable Frame Rate (VFR)
+- **Solution**: Normalize to CFR on export (recommended)
+- **Note**: Preview may not be frame-exact without normalization
+- Alternative: Normalize on import (slower, but preview matches export)
 
 ---
 
@@ -211,13 +254,26 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Goal**: Add overlay/PiP track above main track
 
 **Tasks**:
-- [ ] Update store to use `tracks: Track[]` model
-- [ ] Create track 0 (Main) and track 1 (Overlay) by default
-- [ ] Render two horizontal lanes in Timeline component
-- [ ] Allow dropping clips into either track
-- [ ] Add visual indicator for track type (main=full height, overlay=PiP badge)
-- [ ] Update export to handle overlay with ffmpeg filter_complex
-- [ ] Add overlay position controls (bottom-right, top-left, etc.)
+- [ ] **3.1**: Update store to use `tracks: Track[]` model
+- [ ] **3.2**: Create track 0 (Main) and track 1 (Overlay) by default
+- [ ] **3.3**: Render two horizontal lanes in Timeline component
+- [ ] **3.4**: Allow dropping clips into either track
+- [ ] **3.5**: Add visual indicator for track type (main=full height, overlay=PiP badge)
+- [ ] **3.6**: Update export to handle overlay with ffmpeg filter_complex
+- [ ] **3.7**: Add overlay position controls (bottom-right, top-left, center, etc.)
+
+**PiP Export Specs** (Lock Down Implementation):
+- **Overlay Size**: 25% of main video width (maintain aspect ratio)
+- **Positions**: 
+  - Bottom-right: `overlay=W-w-16:H-h-16` (default)
+  - Top-left: `overlay=16:16`
+  - Top-right: `overlay=W-w-16:16`
+  - Bottom-left: `overlay=16:H-h-16`
+  - Center: `overlay=(W-w)/2:(H-h)/2`
+- **Audio**: Main track audio only (overlay muted by default)
+  - Future: Mix overlay at -12dB with toggle
+- **Duration**: Use `-shortest` to match shortest clip
+- **Filter Graph**: `[1:v]scale=iw*0.25:-2[pip];[0:v][pip]overlay=X:Y:eval=init,format=yuv420p`
 
 **Components**:
 - `TrackLane.tsx`: Container for clips on a single track
@@ -236,35 +292,63 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Goal**: Show preview thumbnails for each clip and trim points
 
 **Tasks**:
-- [ ] Add IPC handler to generate thumbnail using ffmpeg
-- [ ] Extract frame at 1s mark (or first keyframe)
-- [ ] Return as base64 or save to temp file
-- [ ] Update Clip model to store thumbnail URL
-- [ ] Render thumbnail as background in ClipItem
-- [ ] Cache thumbnails (don't regenerate on every render)
-- [ ] Add collapsible trim point preview thumbnails above timeline handles
-  - Always visible above start/end handles (persistent)
+- [ ] **4.1**: Add IPC handler to generate thumbnail using ffmpeg
+- [ ] **4.2**: Create cache directory: `{appData}/Clappper/thumbs/`
+- [ ] **4.3**: Generate thumbs to cache: `thumbs/{hash}-{t}.jpg` (not base64)
+- [ ] **4.4**: Update Clip model to store thumbnail path
+- [ ] **4.5**: Render thumbnail as background in ClipItem
+- [ ] **4.6**: Throttle & dedupe thumbnail requests (one job per clip+timestamp)
+- [ ] **4.7**: Add collapsible trim point preview thumbnails above timeline handles
   - Shows frame at exact trim point (~100px wide)
   - Collapsible UI control (minimize/restore/close)
-  - Reuses ffmpeg thumbnail generation for specific timestamps
+  - Reuses cached thumbnails
   - Position with absolute positioning and z-index layering
 
-**Thumbnail Generation**:
+**Thumbnail Generation (No Jank)**:
 ```bash
-ffmpeg -i input.mp4 -ss 1 -vframes 1 -vf scale=160:-1 thumb.jpg
-# For trim point thumbnails:
-ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 trim_thumb.jpg
+# Clip thumbnail (at 1s or first keyframe)
+ffmpeg -i input.mp4 -ss 1 -vframes 1 -vf scale=160:-1 \
+  {appData}/Clappper/thumbs/{clipId}-main.jpg
+
+# Trim point thumbnail (specific timestamp)
+ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
+  {appData}/Clappper/thumbs/{clipId}-{timestamp}.jpg
 ```
+
+**Cache Strategy**:
+- Hash clip path + timestamp for cache key
+- Check if cached file exists before generating
+- Auto-clean cache on startup (delete files > 7 days old)
 
 ### Phase 5: Export Presets (Priority 4)
 **Goal**: Let user choose output quality
 
 **Tasks**:
-- [ ] Add export settings panel/modal in UI
-- [ ] Add radio buttons: 360p / 480p / 720p / 1080p / Source
-- [ ] Store selection in Zustand state
-- [ ] Update ffmpeg command to include resolution scaling
-- [ ] Add preset dropdown: Fast / Medium / Slow (maps to veryfast/medium/slow)
+- [ ] **5.1**: Add export settings panel/modal in UI
+- [ ] **5.2**: Add radio buttons: 360p / 480p / 720p / 1080p / Source
+- [ ] **5.3**: Store selection in Zustand state
+- [ ] **5.4**: Update ffmpeg command to include resolution scaling
+- [ ] **5.5**: Add preset dropdown: Fast / Medium / Slow (maps to veryfast/medium/slow)
+
+**Resolution Mapping (Preserve Aspect Ratio)**:
+- **360p**: `-vf "scale=-2:360,fps=30,format=yuv420p"`
+- **480p**: `-vf "scale=-2:480,fps=30,format=yuv420p"`
+- **720p**: `-vf "scale=-2:720,fps=30,format=yuv420p"`
+- **1080p**: `-vf "scale=-2:1080,fps=30,format=yuv420p"`
+- **Source**: No scaling, but still normalize: `-vf "fps=30,format=yuv420p"`
+
+**Preset Mapping**:
+- **Fast**: `-preset veryfast -crf 28` (larger file, faster encode)
+- **Medium**: `-preset medium -crf 23` (balanced)
+- **Slow**: `-preset slow -crf 20` (smaller file, slower encode)
+
+**Color Matrix**:
+- Assume BT.709 for all HD content
+- Enforce: `-pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709`
+
+**Audio Edge Cases**:
+- Mono sources: `-ac 2` (upmix to stereo)
+- Missing audio: Generate silent track with `-f lavfi -i anullsrc=r=48000:cl=stereo`
 
 **Export Panel UI**:
 ```
@@ -291,28 +375,87 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 trim_thumb.jpg
 **Goal**: Stable, distributable app
 
 **Tasks**:
+
+**6.1: Cancelable Exports + Temp Hygiene**
+- [ ] Track spawned ffmpeg PID
+- [ ] Add Cancel button that kills process and removes partial files
+- [ ] Use dedicated temp dir: `{appData}/Clappper/tmp/`
+- [ ] Auto-clean temp dir on startup/shutdown
+- [ ] Clean up temp files even on error/crash
+
+**6.2: Error Handling + Actions**
+- [ ] Surface meaningful errors: disk full, permissions, unknown codec
+- [ ] Add actionable buttons: "Open temp folder", "Retry with transcode"
 - [ ] Add error handling for import failures (unsupported codec, corrupt file)
-- [ ] Add error handling for export failures (disk space, permissions)
+- [ ] Add error handling for export failures
 - [ ] Show loading spinner during metadata extraction
-- [ ] Add cancel button for exports
-- [ ] Add dynamic player zoom/canvas resizing for low-resolution videos (scale up to fit player area)
+- [ ] Block export on empty timeline
+- [ ] Block export on zero-duration clips
+
+**6.3: Memory Safety + Performance**
+- [ ] Revoke object URLs when clips change (avoid leaks)
+- [ ] Virtualize Timeline list if clips > 30 (windowing)
+- [ ] Add dynamic player zoom/canvas resizing for low-resolution videos
+
+**6.4: CSP & Security**
+- [ ] Production CSP: remove `'unsafe-inline'`, restrict file:/blob: properly
+- [ ] Dev CSP can stay relaxed
+
+**6.5: Packaging Invariants**
+- [ ] Verify electron-builder extraResources includes ffmpeg-static binary
+- [ ] Windows long paths: use `\\?\` prefix or keep temp paths short
+- [ ] Add preflight check: "ffmpeg present & executable" with friendly error
 - [ ] Test on Windows (NSIS installer)
 - [ ] Test on Mac (DMG)
 - [ ] Add app icon (icon.png → icon.ico / icon.icns)
-- [ ] Write user-facing README with screenshots
-- [ ] Handle edge cases (empty timeline export, zero-duration clips)
+
+**6.6: QA Smoke Tests**
+- [ ] Mixed codecs: HEVC → H.264 transcode path
+- [ ] PiP: 1080p main + 720p overlay, different aspect ratios
+- [ ] Long export: 5-8 minutes, cancel + resume
+- [ ] Edge cases: zero-duration trim blocked, empty timeline export blocked
+- [ ] Document in README: "How We Tested"
+
+**6.7: Metrics & Logging**
+- [ ] Track export success rate
+- [ ] Measure median encode speed (x real-time)
+- [ ] Add log file: `{appData}/Clappper/logs/clappper.log`
+- [ ] Log ffmpeg commands and errors for debugging
 
 ### Phase 7: Stretch Features (If Time Permits)
 **Goal**: Enhance UX with power-user features
 
 **Tasks**:
-- [ ] Keyboard shortcuts (space, delete, cmd/ctrl+z, etc.)
+
+**7.1: Keyboard Shortcuts (Cheap Win)**
+- [ ] **Space**: Play/pause
+- [ ] **Delete/Backspace**: Delete selected clip
+- [ ] **S**: Split at playhead
+- [ ] **←/→**: Nudge playhead ±0.1s (Shift = ±1s)
+- [ ] **Cmd/Ctrl+Z**: Undo (requires undo stack)
+- [ ] **Cmd/Ctrl+Shift+Z**: Redo
+
+**7.2: Autosave & Crash Recovery**
+- [ ] Autosave every 5s to `{appData}/Clappper/autosave.json`
+- [ ] On launch, offer to restore autosave if present
+- [ ] Define project.json schema (versioned):
+```json
+{
+  "version": 1,
+  "clips": [...],
+  "tracks": [...],
+  "selectedId": "...",
+  "exportSettings": {...}
+}
+```
+- [ ] Add Save Project / Load Project menu items
+
+**7.3: Additional Features**
 - [ ] Undo/redo with history stack
 - [ ] Text overlay component with draggable positioning
 - [ ] Crossfade transition between clips
 - [ ] Audio waveform visualization
 - [ ] Audio gain slider per clip
-- [ ] Save/load project JSON to disk
 - [ ] Screen recording with desktopCapturer + MediaRecorder
 
 ---
@@ -444,6 +587,28 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 trim_thumb.jpg
 - 🎯 Preview plays smoothly without stuttering
 - 🎯 Export completes in <2x real-time (5min video → 10min export)
 - 🎯 Professional UI with consistent styling
+
+---
+
+## Known Limitations
+
+**Current Limitations** (as of Phase 2):
+- **No keyframe-aware preview trims**: Trim handles work on time, not keyframes (export may shift slightly)
+- **No transitions**: Hard cuts only between clips
+- **No text overlays**: Video-only editing
+- **No audio mixing**: Single audio track from main video
+- **No project persistence**: Clips cleared on refresh (until Phase 7)
+- **No undo/redo**: Single timeline state (until Phase 7)
+- **Single track**: Only one video track (until Phase 3)
+- **Limited codec support in preview**: H.264 only (others transcoded on import)
+- **VFR videos**: Preview may not match export frame-exactly
+
+**Planned Fixes**:
+- Phase 3: Two-track support (PiP overlay)
+- Phase 4: Thumbnails for visual reference
+- Phase 5: Export presets for quality control
+- Phase 6: Cancel exports, better error handling
+- Phase 7: Autosave, keyboard shortcuts, undo/redo
 
 ---
 
