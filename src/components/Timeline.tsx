@@ -1,12 +1,14 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { clamp } from '../lib/ff'
 import ClipItem from './ClipItem'
 
 export default function Timeline() {
-  const { clips, setTrim, selectedId, select } = useStore()
+  const { clips, setTrim, selectedId, select, reorderClips } = useStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const sortedClips = useStore.getState().getClipsSorted()
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   
   // Auto-select first clip if nothing selected (must be before early return)
   useEffect(() => {
@@ -81,6 +83,34 @@ export default function Timeline() {
   const totalDuration = sortedClips.reduce((sum, c) => sum + (c.end - c.start), 0)
   const maxTimelineWidth = 1000
   const PIXELS_PER_SECOND = Math.min(50, maxTimelineWidth / totalDuration)
+  
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => (e: React.DragEvent) => {
+    setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  
+  const handleDragOver = (index: number) => (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIndex(index)
+  }
+  
+  const handleDrop = (index: number) => (e: React.DragEvent) => {
+    e.preventDefault()
+    
+    if (draggedIndex !== null && draggedIndex !== index) {
+      reorderClips(draggedIndex, index)
+    }
+    
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
+  
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
 
   return (
     <div style={{ padding: 16 }}>
@@ -99,13 +129,17 @@ export default function Timeline() {
           overflowX: 'auto',
           minHeight: 80
         }}>
-          {sortedClips.map(clip => (
+          {sortedClips.map((clip, index) => (
             <ClipItem
               key={clip.id}
               clip={clip}
               isSelected={clip.id === selectedId}
               onSelect={() => select(clip.id)}
               pixelsPerSecond={PIXELS_PER_SECOND}
+              onDragStart={handleDragStart(index)}
+              onDragOver={handleDragOver(index)}
+              onDrop={handleDrop(index)}
+              isDragOver={dragOverIndex === index && draggedIndex !== index}
             />
           ))}
         </div>
