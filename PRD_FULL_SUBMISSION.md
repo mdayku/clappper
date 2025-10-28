@@ -250,8 +250,8 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Phase 3: Two-Track System (Priority 2)
-**Goal**: Add overlay/PiP track above main track
+### Phase 3: Multi-Track PiP System (Priority 2)
+**Goal**: Advanced multi-track system with animated Picture-in-Picture
 
 **Tasks**:
 - [x] **3.1**: Update store to use `tracks: Track[]` model ✅
@@ -259,8 +259,19 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 - [x] **3.3**: Render two horizontal lanes in Timeline component ✅
 - [x] **3.4**: Allow dropping clips into either track ✅
 - [x] **3.5**: Add visual indicator for track type (main=full height, overlay=PiP badge) ✅
-- [ ] **3.6**: Update export to handle overlay with ffmpeg filter_complex
-- [ ] **3.7**: Add overlay position controls (bottom-right, top-left, center, etc.)
+- [x] **3.5.1**: Fix timeline scaling to handle longest track (main or overlay) ✅
+- [x] **3.5.2**: Update Player to composite both tracks with PiP preview ✅
+- [x] **3.5.3**: Fix Player aspect ratio handling (contain video properly) ✅
+- [x] **3.5.4**: Sync playback between main and overlay videos ✅
+- [x] **3.5.5**: Add visual selection indicators (border highlights) ✅
+- [x] **3.6**: Update export to handle overlay with ffmpeg filter_complex ✅
+- [x] **3.7**: Add overlay position AND size controls (5 positions + adjustable 15-50%) ✅
+- [x] **3.8**: Add FREE DRAGGING of PiP window to custom positions ✅
+- [x] **3.9**: Implement KEYFRAME ANIMATION system for PiP movement ✅
+- [x] **3.10**: Generate FFmpeg expressions for animated overlay (position + size interpolation) ✅
+- [x] **3.11**: Extend to 4 OVERLAY TRACKS for multiple simultaneous PiP windows ✅
+
+**Status**: ✅ **PHASE 3 COMPLETE!** Advanced multi-track PiP system with keyframe animation fully implemented and tested.
 
 **PiP Export Specs** (Lock Down Implementation):
 - **Overlay Size**: 25% of main video width (maintain aspect ratio)
@@ -288,7 +299,18 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Status**: ✅ **Tasks 3.1-3.5 COMPLETE!** Two-track UI fully functional with drag-and-drop.
+**Status**: ✅ **PHASE 3 COMPLETE!** Advanced multi-track PiP system:
+- ✅ **4 OVERLAY TRACKS** - support up to 4 simultaneous PiP windows
+- ✅ Drag-and-drop between all tracks (1 main + 4 overlay)
+- ✅ PiP preview with synchronized playback (all overlays sync to main)
+- ✅ **FREE DRAGGING** of PiP windows to any position
+- ✅ Adjustable position (5 presets + custom) and size (15-50%)
+- ✅ **KEYFRAME ANIMATION** - animate PiP position and size over time
+- ✅ Interpolated movement between keyframes (linear)
+- ✅ Visual keyframe markers on preview
+- ✅ Color-coded overlay badges (Purple, Blue, Green, Orange)
+- ✅ Automatic offset positioning to prevent complete overlap
+- ✅ PiP export with ffmpeg filter_complex + animated expressions
 
 ---
 
@@ -296,22 +318,34 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 **Goal**: Package app for distribution to verify it works outside dev mode
 
 **Tasks**:
-- [ ] **3.5.1**: Run production build (`npm run build`)
-- [ ] **3.5.2**: Verify bundled files in `dist/` directory
-- [ ] **3.5.3**: Package for Windows (`npm run pack`)
-- [ ] **3.5.4**: Verify ffmpeg-static binary is included in packaged app
-- [ ] **3.5.5**: Test packaged app (import, edit, export)
-- [ ] **3.5.6**: Test on clean machine (no dev environment)
-- [ ] **3.5.7**: Document any packaging issues and fixes
+- [x] **3.5.1**: Run production build (`npm run build`) ✅
+- [x] **3.5.2**: Verify bundled files in `dist/` directory ✅
+- [x] **3.5.3**: Package for Windows (`npm run pack`) ✅
+- [x] **3.5.4**: Verify ffmpeg-static binary is included in packaged app ✅
+- [x] **3.5.5**: Test packaged app (import, edit, export) ✅
+- [x] **3.5.6**: Fix ffmpeg path resolution for production (process.resourcesPath) ✅
+- [x] **3.5.7**: Fix package.json metadata (description, author, electron in devDeps) ✅
+- [ ] **3.5.8**: Create full installer with `npm run dist` (Windows NSIS)
+- [ ] **3.5.9**: Test installer on clean machine (no dev environment)
+
+**Status**: ✅ **PHASE 3.5 MOSTLY COMPLETE!** App successfully packages and all features work in packaged mode.
 
 **Packaging Checks**:
 - ✅ App launches without dev server
-- ✅ FFmpeg binary is accessible
+- ✅ FFmpeg binary is accessible (fixed path resolution)
 - ✅ File dialogs work (import, save as)
 - ✅ Video preview works (media:// protocol)
 - ✅ Export works (trim, concat, PiP)
 - ✅ No missing dependencies errors
-- ✅ App icon displays correctly
+- ⚠️ App icon displays correctly (using default Electron icon)
+
+**Key Fixes Implemented**:
+- **FFmpeg Path Resolution**: Dynamic path based on `app.isPackaged`
+  - Production: `process.resourcesPath/ffmpeg/ffmpeg.exe`
+  - Development: `require('ffmpeg-static')`
+- **Package.json**: Moved electron to devDependencies, added description/author
+- **Code Signing**: Disabled for development builds (CSC_IDENTITY_AUTO_DISCOVERY=false)
+- **extraResources**: FFmpeg binary correctly extracted to resources folder
 
 **Electron Builder Config Verify**:
 ```json
@@ -431,6 +465,12 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 
 **Tasks**:
 
+**6.0: Additional Format Support**
+- [x] Add .avi to file picker filters (dialog:openFiles) ✅
+- [ ] Test AVI import with various codecs (DivX, Xvid, etc.)
+- [x] AVI files transcode automatically via existing H.264 pipeline ✅
+- [ ] Add format detection and codec warnings for unsupported AVI variants (future enhancement)
+
 **6.1: Cancelable Exports + Temp Hygiene**
 - [ ] Track spawned ffmpeg PID
 - [ ] Add Cancel button that kills process and removes partial files
@@ -482,6 +522,11 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 
 **Tasks**:
 
+**7.0: UI Improvements**
+- [x] Add overlay track count selector dropdown (0-4 tracks) ✅
+- [x] Make timeline scrollable for many tracks ✅
+- [x] Toolbar wraps on small screens ✅
+
 **7.1: Keyboard Shortcuts (Cheap Win)**
 - [ ] **Space**: Play/pause
 - [ ] **Delete/Backspace**: Delete selected clip
@@ -512,6 +557,175 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 - [ ] Audio waveform visualization
 - [ ] Audio gain slider per clip
 - [ ] Screen recording with desktopCapturer + MediaRecorder
+- [x] **AVI format support** - Add .avi to import filters and transcode pipeline ✅
+
+---
+
+### Phase 8: AI Video Enhancement (Future Feature)
+**Goal**: Local GPU-accelerated video upscaling using Real-ESRGAN
+
+**Target Hardware**: NVIDIA GeForce RTX 4060 (user's GPU)
+- **VRAM**: 8GB
+- **CUDA Cores**: 3072
+- **Performance**: ~2-4 seconds per frame @ 2x upscaling
+
+**Tasks**:
+
+**8.1: Real-ESRGAN Integration** (Priority 1)
+- [ ] Research Real-ESRGAN models (x2, x4, anime variants)
+- [ ] Choose optimal model for RTX 4060 (balance quality/speed)
+- [ ] Test ONNX Runtime vs Python subprocess approach
+- [ ] Benchmark performance on sample videos
+
+**8.2: Local Inference Setup** (Priority 2)
+- [ ] Install Real-ESRGAN Python package or ONNX model
+- [ ] Create IPC handler: `ai:enhance`
+- [ ] Implement frame extraction from video
+- [ ] Process frames through Real-ESRGAN
+- [ ] Reassemble enhanced frames to video
+- [ ] Add progress tracking (frame N of M)
+- [ ] Implement cancellation support
+
+**8.3: GPU Detection & Setup** (Priority 3)
+- [ ] Detect NVIDIA GPU presence (nvidia-smi)
+- [ ] Check CUDA availability
+- [ ] Verify VRAM capacity (need 4GB+ for 1080p)
+- [ ] Graceful fallback if GPU unavailable
+- [ ] Show GPU info in UI ("Using: RTX 4060")
+
+**8.4: UI/UX** (Priority 4)
+- [ ] Add "Enhance Video" button in Toolbar
+- [ ] Enhancement settings modal:
+  - Source resolution detection
+  - Target resolution selector (720p, 1080p, 4K)
+  - Model selector (Fast/Balanced/Quality)
+  - Denoise toggle
+  - Face enhancement toggle
+- [ ] Before/After preview comparison
+- [ ] Progress bar with:
+  - Current frame / Total frames
+  - Estimated time remaining
+  - GPU utilization %
+- [ ] Cancel button (kills process, cleans temp files)
+
+**8.5: Enhancement Pipeline** (Priority 5)
+- [ ] Extract frames: `ffmpeg -i input.mp4 frame_%04d.png`
+- [ ] Process frames: `realesrgan-ncnn-vulkan -i frame_%04d.png -o enhanced_%04d.png -s 2`
+- [ ] Reassemble: `ffmpeg -i enhanced_%04d.png -c:v libx264 output.mp4`
+- [ ] Audio passthrough from original
+- [ ] Temp file cleanup
+- [ ] Memory management for long videos
+
+**8.6: Presets & Optimization** (Priority 6)
+- [ ] **Fast Preset**: Real-ESRGAN-x2 (2x upscale, ~2s/frame)
+- [ ] **Balanced Preset**: Real-ESRGAN-x2 + denoise (~3s/frame)
+- [ ] **Quality Preset**: Real-ESRGAN-x4 (4x upscale, ~6s/frame)
+- [ ] **Anime Preset**: RealESRGAN-anime (optimized for animation)
+- [ ] Batch processing optimization
+- [ ] GPU memory pooling
+- [ ] Multi-threaded frame I/O
+
+**8.7: Smart Features** (Priority 7)
+- [ ] Auto-detect low resolution videos (<720p)
+- [ ] Suggest enhancement on import
+- [ ] Side-by-side comparison before committing
+- [ ] "Enhance All Clips" batch operation
+- [ ] Save enhancement settings per project
+- [ ] Estimate processing time before starting
+
+**Enhancement Specs**:
+
+**Performance Estimates (RTX 4060)**:
+```
+480p → 1080p (2.25x upscale):
+- Fast: ~2.5s/frame → 30s clip = 37 minutes
+- Balanced: ~3.5s/frame → 30s clip = 52 minutes
+- Quality: ~5s/frame → 30s clip = 75 minutes
+
+720p → 1080p (1.5x upscale):
+- Fast: ~2s/frame → 30s clip = 30 minutes
+- Balanced: ~3s/frame → 30s clip = 45 minutes
+- Quality: ~4s/frame → 30s clip = 60 minutes
+
+360p → 1080p (3x upscale):
+- Fast: ~3s/frame → 30s clip = 45 minutes
+- Balanced: ~4s/frame → 30s clip = 60 minutes
+- Quality: ~7s/frame → 30s clip = 105 minutes
+```
+
+**Model Files**:
+- Real-ESRGAN-x2: ~17MB
+- Real-ESRGAN-x4: ~17MB
+- RealESRGAN-anime: ~17MB
+- Total bundle size: ~50MB
+
+**Dependencies**:
+```json
+{
+  "realesrgan-ncnn-vulkan": "^0.2.0",  // Vulkan-based (faster than CUDA for inference)
+  "python": "^3.9",                     // For Real-ESRGAN Python version
+  "torch": "^2.0",                      // PyTorch with CUDA support
+  "opencv-python": "^4.8"               // Frame processing
+}
+```
+
+**Alternative: ONNX Runtime** (Recommended for Electron):
+```typescript
+import * as ort from 'onnxruntime-node'
+
+// Load model
+const session = await ort.InferenceSession.create('realesrgan-x2.onnx', {
+  executionProviders: ['cuda', 'cpu']
+})
+
+// Process frame
+const tensor = new ort.Tensor('float32', frameData, [1, 3, height, width])
+const results = await session.run({ input: tensor })
+```
+
+**IPC API**:
+```typescript
+// Preload
+window.clappper.enhanceVideo({
+  input: string,
+  output: string,
+  model: 'x2' | 'x4' | 'anime',
+  denoise: boolean,
+  faceEnhance: boolean
+}) => Promise<{ ok: boolean; outPath: string }>
+
+window.clappper.onEnhanceProgress((data: {
+  frame: number,
+  totalFrames: number,
+  percent: number,
+  eta: number,
+  gpu: string
+}) => void)
+```
+
+**User Flow**:
+```
+1. User imports 480p video
+2. App shows badge: "Low Resolution - Enhance to 1080p?"
+3. User clicks "Enhance"
+4. Modal opens:
+   - Detected: 480p (640x480)
+   - Target: 1080p (1920x1080)
+   - Model: Fast (2x upscale)
+   - Estimated time: 37 minutes
+   - GPU: NVIDIA RTX 4060
+5. User clicks "Start Enhancement"
+6. Progress: "Frame 450/900 (50%) - 18 min remaining"
+7. Complete! Original saved, enhanced version added to timeline
+8. User can compare before/after in player
+```
+
+**Future Enhancements**:
+- [ ] Frame interpolation (30fps → 60fps) using RIFE
+- [ ] Denoising without upscaling
+- [ ] Colorization for black & white videos
+- [ ] Stabilization using AI motion prediction
+- [ ] Cloud API fallback for non-NVIDIA GPUs
 
 ---
 

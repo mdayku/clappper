@@ -167,9 +167,11 @@ sequenceDiagram
 ```mermaid
 graph LR
     subgraph "Store State"
-        Clips[clips: Clip[]]
+        Tracks[tracks: Track[]]
         SelectedId[selectedId: string]
         Playhead[playhead: number]
+        PipSettings[pipSettings: PipSettings]
+        VisibleOverlays[visibleOverlayCount: number]
     end
     
     subgraph "Actions"
@@ -178,23 +180,29 @@ graph LR
         ReorderClips[reorderClips]
         SplitClip[splitClip]
         DeleteClip[deleteClip]
+        MoveClipToTrack[moveClipToTrack]
+        SetPipSettings[setPipSettings]
         Select[select]
     end
     
     subgraph "Selectors"
-        GetSorted[getClipsSorted]
+        GetMainTrack[getMainTrack]
+        GetOverlayTracks[getOverlayTracks]
         GetTotal[getTotalDuration]
     end
     
-    AddClips -->|updates| Clips
-    SetTrim -->|updates| Clips
-    ReorderClips -->|updates| Clips
-    SplitClip -->|creates new| Clips
-    DeleteClip -->|removes from| Clips
+    AddClips -->|updates| Tracks
+    SetTrim -->|updates| Tracks
+    ReorderClips -->|updates| Tracks
+    SplitClip -->|creates new| Tracks
+    DeleteClip -->|removes from| Tracks
+    MoveClipToTrack -->|updates| Tracks
+    SetPipSettings -->|updates| PipSettings
     Select -->|updates| SelectedId
     
-    GetSorted -->|reads| Clips
-    GetTotal -->|reads| Clips
+    GetMainTrack -->|reads| Tracks
+    GetOverlayTracks -->|reads| Tracks
+    GetTotal -->|reads| Tracks
 ```
 
 ## IPC API Surface
@@ -209,6 +217,7 @@ graph LR
 | `transcode:h264` | Convert to H.264 | `{ input, output }` | `{ ok, output }` |
 | `export:trim` | Export single clip | `{ input, outPath, start, end }` | `{ ok, outPath }` |
 | `export:concat` | Export multi-clip | `{ clips[], outPath }` | `{ ok, outPath }` |
+| `export:pip` | Export with PiP overlay | `{ mainClip, overlayClip, outPath, pipPosition, pipSize, keyframes?, customX?, customY? }` | `{ ok, outPath }` |
 
 ### Main → Renderer
 
@@ -235,7 +244,7 @@ During Export (temporary):
 └── (deleted after export)
 ```
 
-## Clip Data Model
+## Data Models
 
 ```typescript
 interface Clip {
@@ -247,8 +256,32 @@ interface Clip {
   start: number           // Trim in-point (seconds)
   end: number             // Trim out-point (seconds)
   order: number           // Position in timeline (0, 1, 2, ...)
+  trackId: string         // Which track this clip belongs to
   width?: number          // Video resolution width
   height?: number         // Video resolution height
+}
+
+interface Track {
+  id: string              // 'main', 'overlay-1', 'overlay-2', etc.
+  name: string            // Display name
+  type: 'video' | 'overlay'
+  clips: Clip[]           // Clips on this track
+  height: number          // Visual height in timeline (px)
+}
+
+interface PipSettings {
+  position: PipPosition   // 'bottom-right', 'top-left', 'center', 'custom'
+  size: number            // 0.15 to 0.5 (15% to 50% of main video)
+  keyframes: PipKeyframe[] // Position animation keyframes
+  customX?: number        // Custom X position (0-1)
+  customY?: number        // Custom Y position (0-1)
+}
+
+interface PipKeyframe {
+  time: number            // Time in seconds
+  x: number               // X position (0-1)
+  y: number               // Y position (0-1)
+  size: number            // Size at this keyframe
 }
 ```
 
@@ -311,16 +344,50 @@ ffprobe -v quiet \
 4. **Export**: Stream processing (no loading full videos into memory)
 5. **Temp Files**: Auto-cleanup after export
 
+## Current Features (Phase 3 Complete!)
+
+✅ **Multi-Track System**
+- 1 Main track + 4 Overlay tracks
+- Drag-and-drop between all tracks
+- Configurable overlay track visibility (0-4)
+- Color-coded track badges
+
+✅ **Advanced PiP System**
+- Real-time PiP preview with synchronized playback
+- Free dragging of PiP windows
+- 5 position presets + custom positioning
+- Adjustable size (15-50%)
+- Keyframe animation system
+- Interpolated movement between keyframes
+- Visual keyframe markers
+
+✅ **Export Pipeline**
+- Single clip trim
+- Multi-clip concatenation
+- PiP overlay with animated position/size
+- FFmpeg filter_complex expressions
+- Progress tracking
+
+✅ **Format Support**
+- MP4, MOV, WebM, MKV, AVI
+- Auto-transcode H.265/HEVC → H.264
+- Codec detection and normalization
+
 ## Known Limitations
 
 - No project persistence (clips cleared on refresh)
-- Single track only (no PiP/overlay yet)
 - No undo/redo
 - No keyboard shortcuts
 - No thumbnails on timeline
-- Export progress doesn't show during segment trimming (only concat phase)
+- Multi-overlay export (only first overlay currently)
+- Export progress doesn't show during segment trimming
 
-## Future Enhancements (Phases 3-7)
+## Future Enhancements
 
-See [`PRD_FULL_SUBMISSION.md`](./PRD_FULL_SUBMISSION.md) for detailed roadmap.
+See [`PRD_FULL_SUBMISSION.md`](./PRD_FULL_SUBMISSION.md) for detailed roadmap:
+- **Phase 4:** Thumbnails
+- **Phase 5:** Export presets (resolution/quality)
+- **Phase 6:** Polish & packaging
+- **Phase 7:** Keyboard shortcuts, undo/redo
+- **Phase 8:** AI video enhancement (Real-ESRGAN)
 

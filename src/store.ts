@@ -1,16 +1,19 @@
 import { create } from 'zustand'
-import { Clip, Track, PipPosition } from './lib/types'
+import { Clip, Track, PipPosition, PipSettings } from './lib/types'
 
 interface State {
   tracks: Track[]
   selectedId?: string
   playhead: number
-  pipPosition: PipPosition
+  pipSettings: PipSettings
+  visibleOverlayCount: number // How many overlay tracks to show (0-4)
   
   // Track operations
   getTrack: (trackId: string) => Track | undefined
   getMainTrack: () => Track
   getOverlayTrack: () => Track
+  getOverlayTracks: () => Track[]
+  setVisibleOverlayCount: (count: number) => void
   
   // Clip operations (now track-aware)
   setClips: (c: Clip[]) => void
@@ -21,7 +24,7 @@ interface State {
   // UI state
   setPlayhead: (t: number) => void
   select: (id?: string) => void
-  setPipPosition: (pos: PipPosition) => void
+  setPipSettings: (settings: Partial<PipSettings>) => void
   
   // Timeline operations
   reorderClips: (fromIndex: number, toIndex: number, trackId: string) => void
@@ -42,7 +45,7 @@ const sortClips = (clips: Clip[]) => [...clips].sort((a, b) => a.order - b.order
 const reassignOrders = (clips: Clip[]) => 
   clips.map((clip, index) => ({ ...clip, order: index }))
 
-// Initialize default tracks
+// Initialize default tracks (1 main + 4 overlay tracks)
 const createDefaultTracks = (): Track[] => [
   {
     id: 'main',
@@ -52,8 +55,29 @@ const createDefaultTracks = (): Track[] => [
     height: 100
   },
   {
-    id: 'overlay',
-    name: 'Overlay',
+    id: 'overlay-1',
+    name: 'Overlay 1',
+    type: 'overlay',
+    clips: [],
+    height: 80
+  },
+  {
+    id: 'overlay-2',
+    name: 'Overlay 2',
+    type: 'overlay',
+    clips: [],
+    height: 80
+  },
+  {
+    id: 'overlay-3',
+    name: 'Overlay 3',
+    type: 'overlay',
+    clips: [],
+    height: 80
+  },
+  {
+    id: 'overlay-4',
+    name: 'Overlay 4',
     type: 'overlay',
     clips: [],
     height: 80
@@ -63,12 +87,20 @@ const createDefaultTracks = (): Track[] => [
 export const useStore = create<State>((set, get) => ({
   tracks: createDefaultTracks(),
   playhead: 0,
-  pipPosition: 'bottom-right',
+  visibleOverlayCount: 4, // Show all 4 by default
+  pipSettings: {
+    position: 'bottom-right',
+    size: 0.25, // 25% default
+    keyframes: [],
+    customX: undefined,
+    customY: undefined
+  },
   
   // Track getters
   getTrack: (trackId) => get().tracks.find(t => t.id === trackId),
   getMainTrack: () => get().tracks.find(t => t.type === 'video')!,
-  getOverlayTrack: () => get().tracks.find(t => t.type === 'overlay')!,
+  getOverlayTrack: () => get().tracks.find(t => t.type === 'overlay')!, // Returns first overlay for backward compatibility
+  getOverlayTracks: () => get().tracks.filter(t => t.type === 'overlay'),
   
   // Clip operations
   setClips: (c) => set(s => ({
@@ -137,7 +169,10 @@ export const useStore = create<State>((set, get) => ({
   
   setPlayhead: (t) => set({ playhead: t }),
   select: (id) => set({ selectedId: id }),
-  setPipPosition: (pos) => set({ pipPosition: pos }),
+  setPipSettings: (settings) => set(s => ({ 
+    pipSettings: { ...s.pipSettings, ...settings } 
+  })),
+  setVisibleOverlayCount: (count) => set({ visibleOverlayCount: Math.max(0, Math.min(4, count)) }),
   
   reorderClips: (fromIndex, toIndex, trackId) => set(s => ({
     tracks: s.tracks.map(track => {
@@ -226,10 +261,12 @@ export const useStore = create<State>((set, get) => ({
   },
   
   getTotalDuration: () => {
-    // Total duration is based on main track only
-    const mainTrack = get().tracks.find(t => t.type === 'video')
-    if (!mainTrack) return 0
-    return mainTrack.clips.reduce((total, clip) => total + (clip.end - clip.start), 0)
+    // Total duration is the longest track duration (for timeline scaling)
+    const tracks = get().tracks
+    const durations = tracks.map(track => 
+      track.clips.reduce((total, clip) => total + (clip.end - clip.start), 0)
+    )
+    return Math.max(...durations, 0)
   }
 }))
 

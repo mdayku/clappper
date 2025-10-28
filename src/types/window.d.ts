@@ -33,6 +33,16 @@ declare global {
         clips: Array<{input: string; start: number; end: number}>
         outPath: string
       }) => Promise<{ ok: boolean; outPath: string }>
+      exportPip: (payload: {
+        mainClip: {input: string; start: number; end: number}
+        overlayClip: {input: string; start: number; end: number}
+        outPath: string
+        pipPosition: string
+        pipSize: number
+        keyframes?: Array<{time: number; x: number; y: number; size: number}>
+        customX?: number
+        customY?: number
+      }) => Promise<{ ok: boolean; outPath: string }>
       onExportProgress: (callback: (percent: number) => void) => void
       onTranscodeProgress: (callback: (percent: number) => void) => void
     }

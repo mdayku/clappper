@@ -7,7 +7,9 @@ export default function Timeline() {
   const { setTrim, selectedId, select, reorderClips, deleteClip, moveClipToTrack, getClipById } = useStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const mainTrack = useStore(s => s.tracks.find(t => t.id === 'main'))!
-  const overlayTrack = useStore(s => s.tracks.find(t => t.id === 'overlay'))!
+  const visibleOverlayCount = useStore(s => s.visibleOverlayCount)
+  const allOverlayTracks = useStore(s => s.tracks.filter(t => t.type === 'overlay'))
+  const overlayTracks = allOverlayTracks.slice(0, visibleOverlayCount) // Only show visible tracks
   const allClips = useStore.getState().getAllClips()
   
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -90,7 +92,8 @@ export default function Timeline() {
   
   // Drag and drop handlers for tracks
   const createTrackHandlers = (trackId: string) => {
-    const trackClips = trackId === 'main' ? mainTrack.clips : overlayTrack.clips
+    const track = trackId === 'main' ? mainTrack : overlayTracks.find(t => t.id === trackId)
+    const trackClips = track ? track.clips : []
     
     const handleDragStart = (index: number) => (e: React.DragEvent) => {
       setDraggedIndex(index)
@@ -145,11 +148,15 @@ export default function Timeline() {
   }
   
   const mainHandlers = createTrackHandlers('main')
-  const overlayHandlers = createTrackHandlers('overlay')
+  // Create handlers for each overlay track
+  const overlayHandlers = overlayTracks.map(track => ({
+    trackId: track.id,
+    handlers: createTrackHandlers(track.id)
+  }))
 
   return (
-    <div style={{ padding: 16 }}>
-      {/* Two-Track Timeline */}
+    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 500px)' }}>
+      {/* Multi-Track Timeline */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, color: '#666', marginBottom: 12, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>MULTI-TRACK TIMELINE ({allClips.length} total clip{allClips.length !== 1 ? 's' : ''})</span>
@@ -174,21 +181,27 @@ export default function Timeline() {
           onDropOnTrack={mainHandlers.handleDropOnTrack}
         />
         
-        {/* Overlay Track (PiP) */}
-        <TrackLane
-          track={overlayTrack}
-          selectedId={selectedId}
-          onSelect={select}
-          onDelete={deleteClip}
-          onReorder={(from, to) => reorderClips(from, to, 'overlay')}
-          pixelsPerSecond={PIXELS_PER_SECOND}
-          onDragStart={overlayHandlers.handleDragStart}
-          onDragOver={overlayHandlers.handleDragOver}
-          onDrop={overlayHandlers.handleDrop}
-          dragOverIndex={draggedTrackId === 'overlay' ? dragOverIndex : null}
-          draggedIndex={draggedTrackId === 'overlay' ? draggedIndex : null}
-          onDropOnTrack={overlayHandlers.handleDropOnTrack}
-        />
+        {/* Overlay Tracks (PiP) */}
+        {overlayHandlers.map(({ trackId, handlers }) => {
+          const track = overlayTracks.find(t => t.id === trackId)!
+          return (
+            <TrackLane
+              key={trackId}
+              track={track}
+              selectedId={selectedId}
+              onSelect={select}
+              onDelete={deleteClip}
+              onReorder={(from, to) => reorderClips(from, to, trackId)}
+              pixelsPerSecond={PIXELS_PER_SECOND}
+              onDragStart={handlers.handleDragStart}
+              onDragOver={handlers.handleDragOver}
+              onDrop={handlers.handleDrop}
+              dragOverIndex={draggedTrackId === trackId ? dragOverIndex : null}
+              draggedIndex={draggedTrackId === trackId ? draggedIndex : null}
+              onDropOnTrack={handlers.handleDropOnTrack}
+            />
+          )
+        })}
       </div>
 
       {/* Trim Controls for Selected Clip */}

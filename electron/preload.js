@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('clappper', {
     transcode: (payload) => ipcRenderer.invoke('transcode:h264', payload),
     exportTrim: (payload) => ipcRenderer.invoke('export:trim', payload),
     exportConcat: (payload) => ipcRenderer.invoke('export:concat', payload),
+    exportPip: (payload) => ipcRenderer.invoke('export:pip', payload),
     onExportProgress: (cb) => {
         ipcRenderer.removeAllListeners('export:progress');
         ipcRenderer.on('export:progress', (_e, pct) => cb(pct));

@@ -1,9 +1,20 @@
 const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const ffmpegPath = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
-ffmpeg.setFfmpegPath(ffmpegPath);
+// Determine ffmpeg path based on whether app is packaged
+const getFfmpegPath = () => {
+    if (app.isPackaged) {
+        // In production, ffmpeg is in resources/ffmpeg/
+        const resourcesPath = process.resourcesPath;
+        return path.join(resourcesPath, 'ffmpeg', 'ffmpeg.exe');
+    }
+    else {
+        // In development, use ffmpeg-static from node_modules
+        return require('ffmpeg-static');
+    }
+};
+ffmpeg.setFfmpegPath(getFfmpegPath());
 let win = null;
 // Register custom protocol for serving local video files
 app.whenReady().then(() => {
@@ -67,7 +78,7 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0)
 ipcMain.handle('dialog:openFiles', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
         properties: ['openFile', 'multiSelections'],
-        filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'mkv'] }]
+        filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'mkv', 'avi'] }]
     });
     return canceled ? [] : filePaths;
 });
@@ -193,3 +204,153 @@ ipcMain.handle('export:concat', async (_e, args) => {
         throw err;
     }
 });
+// Export with Picture-in-Picture overlay
+ipcMain.handle('export:pip', async (_e, args) => {
+    const { mainClip, overlayClip, outPath, pipPosition, pipSize, keyframes, customX, customY } = args;
+    await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+    let overlayX = '';
+    let overlayY = '';
+    let scaleFilter = `[1:v]scale=iw*${pipSize}:-2[pip]`;
+    // If we have keyframes, generate animated position/size
+    if (keyframes && keyframes.length > 0) {
+        // Build expression for animated X position
+        const xExpr = buildKeyframeExpression(keyframes, 'x', 'W', 'w');
+        const yExpr = buildKeyframeExpression(keyframes, 'y', 'H', 'h');
+        const sizeExpr = buildKeyframeSizeExpression(keyframes);
+        overlayX = xExpr;
+        overlayY = yExpr;
+        scaleFilter = `[1:v]scale='iw*${sizeExpr}':-2[pip]`;
+    }
+    else if (pipPosition === 'custom' && customX !== undefined && customY !== undefined) {
+        // Use custom position (percentage to pixels)
+        overlayX = `W*${customX}`;
+        overlayY = `H*${customY}`;
+    }
+    else {
+        // Use preset positions
+        const padding = 16;
+        switch (pipPosition) {
+            case 'top-left':
+                overlayX = `${padding}`;
+                overlayY = `${padding}`;
+                break;
+            case 'top-right':
+                overlayX = `W-w-${padding}`;
+                overlayY = `${padding}`;
+                break;
+            case 'bottom-left':
+                overlayX = `${padding}`;
+                overlayY = `H-h-${padding}`;
+                break;
+            case 'center':
+                overlayX = '(W-w)/2';
+                overlayY = '(H-h)/2';
+                break;
+            default: // bottom-right
+                overlayX = `W-w-${padding}`;
+                overlayY = `H-h-${padding}`;
+        }
+    }
+    return new Promise((resolve, reject) => {
+        const cmd = ffmpeg()
+            // Main video input
+            .input(mainClip.input)
+            .inputOptions(['-ss', mainClip.start.toString()])
+            .inputOptions(['-t', (mainClip.end - mainClip.start).toString()])
+            // Overlay video input
+            .input(overlayClip.input)
+            .inputOptions(['-ss', overlayClip.start.toString()])
+            .inputOptions(['-t', (overlayClip.end - overlayClip.start).toString()])
+            // Complex filter for PiP
+            .complexFilter([
+            // Scale overlay (possibly animated)
+            scaleFilter,
+            // Overlay on main video at specified position (possibly animated)
+            `[0:v][pip]overlay=${overlayX}:${overlayY}:eval=frame,format=yuv420p[v]`
+        ])
+            // Map output streams
+            .outputOptions([
+            '-map', '[v]', // Use filtered video
+            '-map', '0:a', // Use main audio only
+            '-c:v', 'libx264', // H.264 codec
+            '-preset', 'veryfast', // Fast encoding
+            '-crf', '23', // Good quality
+            '-pix_fmt', 'yuv420p', // Compatibility
+            '-c:a', 'aac', // AAC audio
+            '-ar', '48000', // 48kHz sample rate
+            '-ac', '2', // Stereo
+            '-b:a', '128k', // Audio bitrate
+            '-shortest', // Match shortest input
+            '-movflags', '+faststart' // Enable streaming
+        ])
+            .output(outPath)
+            .on('progress', (p) => {
+            if (win)
+                win.webContents.send('export:progress', p.percent || 0);
+        })
+            .on('end', () => resolve({ ok: true, outPath }))
+            .on('error', (err) => reject(err));
+        cmd.run();
+    });
+});
+// Helper to build FFmpeg expression for keyframe animation
+function buildKeyframeExpression(keyframes, axis, mainDim, pipDim) {
+    if (keyframes.length === 0)
+        return '0';
+    if (keyframes.length === 1) {
+        return `${mainDim}*${keyframes[0][axis]}`;
+    }
+    // Build piecewise linear interpolation expression
+    // Format: if(lt(t,T1), V0, if(lt(t,T2), V0+(V1-V0)*(t-T0)/(T1-T0), ...))
+    let expr = '';
+    for (let i = 0; i < keyframes.length - 1; i++) {
+        const k0 = keyframes[i];
+        const k1 = keyframes[i + 1];
+        const v0 = k0[axis];
+        const v1 = k1[axis];
+        const t0 = k0.time;
+        const t1 = k1.time;
+        if (i === 0) {
+            // Before first keyframe
+            expr += `if(lt(t,${t1}),${mainDim}*${v0}+(${mainDim}*${v1}-${mainDim}*${v0})*(t-${t0})/(${t1}-${t0}),`;
+        }
+        else if (i === keyframes.length - 2) {
+            // Last segment
+            expr += `${mainDim}*${v0}+(${mainDim}*${v1}-${mainDim}*${v0})*(t-${t0})/(${t1}-${t0})`;
+            expr += ')'.repeat(keyframes.length - 1);
+        }
+        else {
+            // Middle segments
+            expr += `if(lt(t,${t1}),${mainDim}*${v0}+(${mainDim}*${v1}-${mainDim}*${v0})*(t-${t0})/(${t1}-${t0}),`;
+        }
+    }
+    return expr;
+}
+// Helper to build size expression for keyframe animation
+function buildKeyframeSizeExpression(keyframes) {
+    if (keyframes.length === 0)
+        return '0.25';
+    if (keyframes.length === 1) {
+        return keyframes[0].size.toString();
+    }
+    let expr = '';
+    for (let i = 0; i < keyframes.length - 1; i++) {
+        const k0 = keyframes[i];
+        const k1 = keyframes[i + 1];
+        const s0 = k0.size;
+        const s1 = k1.size;
+        const t0 = k0.time;
+        const t1 = k1.time;
+        if (i === 0) {
+            expr += `if(lt(t,${t1}),${s0}+(${s1}-${s0})*(t-${t0})/(${t1}-${t0}),`;
+        }
+        else if (i === keyframes.length - 2) {
+            expr += `${s0}+(${s1}-${s0})*(t-${t0})/(${t1}-${t0})`;
+            expr += ')'.repeat(keyframes.length - 1);
+        }
+        else {
+            expr += `if(lt(t,${t1}),${s0}+(${s1}-${s0})*(t-${t0})/(${t1}-${t0}),`;
+        }
+    }
+    return expr;
+}

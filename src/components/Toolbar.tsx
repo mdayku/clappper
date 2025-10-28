@@ -126,15 +126,20 @@ export default function Toolbar() {
   const exportSelected = async () => {
     try {
       setError(null)
-      const allClips = useStore.getState().getClipsSorted()
+      const mainTrack = useStore.getState().getMainTrack()
+      const overlayTrack = useStore.getState().getOverlayTrack()
+      const pipSettings = useStore.getState().pipSettings
       
-      if (allClips.length === 0) {
-        setError('Please import clips first')
+      const mainClips = mainTrack.clips
+      const overlayClips = overlayTrack.clips
+      
+      if (mainClips.length === 0) {
+        setError('Please add clips to the main track first')
         return
       }
       
       // Validate all clips
-      for (const clip of allClips) {
+      for (const clip of [...mainClips, ...overlayClips]) {
         if (clip.end <= clip.start) {
           setError(`Invalid trim range for "${clip.name}": end must be greater than start`)
           return
@@ -142,8 +147,8 @@ export default function Toolbar() {
       }
       
       // Show save dialog
-      const defaultName = allClips.length === 1 
-        ? allClips[0].name.replace(/\.[^.]+$/, '') + '_exported.mp4'
+      const defaultName = mainClips.length === 1 && overlayClips.length === 0
+        ? mainClips[0].name.replace(/\.[^.]+$/, '') + '_exported.mp4'
         : 'clappper_export.mp4'
       const savePath = await window.clappper.savePath(defaultName)
       
@@ -155,17 +160,38 @@ export default function Toolbar() {
       setIsExporting(true)
       setProgress(0)
       
-      if (allClips.length === 1) {
+      // Check if we need PiP export (both tracks have clips)
+      if (mainClips.length > 0 && overlayClips.length > 0) {
+        // PiP export (simplified: first clip from each track)
+        await window.clappper.exportPip({
+          mainClip: {
+            input: mainClips[0].path,
+            start: mainClips[0].start,
+            end: mainClips[0].end
+          },
+          overlayClip: {
+            input: overlayClips[0].path,
+            start: overlayClips[0].start,
+            end: overlayClips[0].end
+          },
+          outPath: savePath,
+          pipPosition: pipSettings.position,
+          pipSize: pipSettings.size,
+          keyframes: pipSettings.keyframes.length > 0 ? pipSettings.keyframes : undefined,
+          customX: pipSettings.customX,
+          customY: pipSettings.customY
+        })
+      } else if (mainClips.length === 1) {
         // Single clip: use trim export
         await window.clappper.exportTrim({ 
-          input: allClips[0].path, 
+          input: mainClips[0].path, 
           outPath: savePath, 
-          start: allClips[0].start, 
-          end: allClips[0].end 
+          start: mainClips[0].start, 
+          end: mainClips[0].end 
         })
       } else {
-        // Multiple clips: concatenate
-        const clipSegments = allClips.map(clip => ({
+        // Multiple clips on main track: concatenate
+        const clipSegments = mainClips.map(clip => ({
           input: clip.path,
           start: clip.start,
           end: clip.end
@@ -200,10 +226,12 @@ export default function Toolbar() {
   }
 
   const allClips = useStore.getState().getAllClips()
+  const visibleOverlayCount = useStore(s => s.visibleOverlayCount)
+  const setVisibleOverlayCount = useStore(s => s.setVisibleOverlayCount)
 
   return (
     <div style={{ display:'flex', flexDirection: 'column', borderBottom: '1px solid #eee' }}>
-      <div style={{ display:'flex', gap: 8, padding: 8 }}>
+      <div style={{ display:'flex', gap: 8, padding: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={onImport} disabled={isExporting || isImporting}>
           {isImporting ? 'Importing...' : 'Import'}
         </button>
@@ -213,13 +241,36 @@ export default function Toolbar() {
         <button 
           onClick={clearAll} 
           disabled={isExporting || isImporting || allClips.length === 0}
-          style={{ marginLeft: 8, color: '#c00' }}
+          style={{ color: '#c00' }}
         >
           Clear All
         </button>
-        <div style={{ marginLeft: 'auto' }}>
-          {allClips.length > 0 && <span style={{ fontSize: 12, color: '#666', marginRight: 12 }}>{allClips.length} clip(s)</span>}
-          {transcodeProgress > 0 && transcodeProgress < 100 && <span style={{ fontSize: 12, color: '#666', marginRight: 12 }}>Converting: {transcodeProgress.toFixed(0)}%</span>}
+        
+        {/* Overlay Track Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+          <label style={{ fontSize: 12, color: '#666' }}>Overlay Tracks:</label>
+          <select 
+            value={visibleOverlayCount}
+            onChange={(e) => setVisibleOverlayCount(parseInt(e.target.value))}
+            style={{ 
+              padding: '4px 8px', 
+              fontSize: 12,
+              border: '1px solid #ccc',
+              borderRadius: 4,
+              cursor: 'pointer'
+            }}
+          >
+            <option value="0">None</option>
+            <option value="1">1 Track</option>
+            <option value="2">2 Tracks</option>
+            <option value="3">3 Tracks</option>
+            <option value="4">4 Tracks</option>
+          </select>
+        </div>
+        
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          {allClips.length > 0 && <span style={{ fontSize: 12, color: '#666' }}>{allClips.length} clip(s)</span>}
+          {transcodeProgress > 0 && transcodeProgress < 100 && <span style={{ fontSize: 12, color: '#666' }}>Converting: {transcodeProgress.toFixed(0)}%</span>}
           {progress > 0 && progress < 100 && <span style={{ fontSize: 12, color: '#666' }}>Export: {progress.toFixed(0)}%</span>}
         </div>
       </div>

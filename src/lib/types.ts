@@ -20,5 +20,20 @@ export type Track = {
   height: number // Visual height in timeline (px)
 }
 
-export type PipPosition = 'bottom-right' | 'top-left' | 'top-right' | 'bottom-left' | 'center'
+export type PipPosition = 'bottom-right' | 'top-left' | 'top-right' | 'bottom-left' | 'center' | 'custom'
+
+export type PipKeyframe = {
+  time: number // Time in seconds
+  x: number // X position (0-1, percentage of container width)
+  y: number // Y position (0-1, percentage of container height)
+  size: number // 0.15 to 0.5 (15% to 50% of main video width)
+}
+
+export type PipSettings = {
+  position: PipPosition
+  size: number // 0.15 to 0.5 (15% to 50% of main video width)
+  keyframes: PipKeyframe[] // Position keyframes for animation
+  customX?: number // Custom X position (0-1)
+  customY?: number // Custom Y position (0-1)
+}
 

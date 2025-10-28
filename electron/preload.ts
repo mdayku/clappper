@@ -7,6 +7,16 @@ contextBridge.exposeInMainWorld('clappper', {
   transcode: (payload: { input: string; output: string }) => ipcRenderer.invoke('transcode:h264', payload),
   exportTrim: (payload: { input: string; outPath: string; start: number; end: number }) => ipcRenderer.invoke('export:trim', payload),
   exportConcat: (payload: { clips: Array<{input: string; start: number; end: number}>; outPath: string }) => ipcRenderer.invoke('export:concat', payload),
+  exportPip: (payload: { 
+    mainClip: {input: string; start: number; end: number}; 
+    overlayClip: {input: string; start: number; end: number};
+    outPath: string;
+    pipPosition: string;
+    pipSize: number;
+    keyframes?: Array<{time: number; x: number; y: number; size: number}>;
+    customX?: number;
+    customY?: number;
+  }) => ipcRenderer.invoke('export:pip', payload),
   onExportProgress: (cb: (pct: number) => void) => {
     ipcRenderer.removeAllListeners('export:progress')
     ipcRenderer.on('export:progress', (_e: any, pct: number) => cb(pct))
