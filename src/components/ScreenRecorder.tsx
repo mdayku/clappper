@@ -18,10 +18,11 @@ interface RecordingTrack {
 
 export default function ScreenRecorder() {
   const [isOpen, setIsOpen] = useState(false)
-  const [step, setStep] = useState<'setup' | 'recording'>('setup')
+  const [step, setStep] = useState<'setup' | 'countdown' | 'recording'>('setup')
   const [availableSources, setAvailableSources] = useState<Array<{ id: string; name: string; thumbnail: string; type: 'screen' | 'window' }>>([])
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
+  const [countdown, setCountdown] = useState(3)
   
   // Recording tracks: main + 4 overlays
   const [tracks, setTracks] = useState<RecordingTrack[]>([
@@ -42,6 +43,8 @@ export default function ScreenRecorder() {
   const loadSources = async () => {
     try {
       const sourcesData = await window.clappper.getScreenSources()
+      console.log('Raw sources from desktopCapturer:', sourcesData)
+      console.log('Number of sources:', sourcesData.length)
       setAvailableSources(sourcesData.map(s => ({ ...s, type: s.name.includes('Screen') ? 'screen' as const : 'window' as const })))
     } catch (err) {
       console.error('Failed to get screen sources:', err)
@@ -114,136 +117,190 @@ export default function ScreenRecorder() {
   }
   
   const startRecording = async () => {
-    const mainTrack = tracks.find(t => t.trackId === 'main')
-    if (!mainTrack || !mainTrack.source.stream) {
-      alert('Please select a main screen source')
-      return
-    }
-    
-    const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    // Set canvas size to main stream resolution
-    canvas.width = 1920
-    canvas.height = 1080
-    
-    setStep('recording')
-    setIsRecording(true)
-    setRecordingTime(0)
-    
-    // Start recording timer
-    recordingIntervalRef.current = window.setInterval(() => {
-      setRecordingTime(t => t + 1)
-    }, 1000)
-    
-    // Composite streams onto canvas
-    const drawFrame = () => {
-      if (!isRecording) return
-      
-      // Clear canvas
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      // Draw main track
-      const mainVideo = document.createElement('video')
-      mainVideo.srcObject = mainTrack.source.stream
-      mainVideo.play()
-      
-      const drawLoop = () => {
-        if (!isRecording) return
-        
-        // Draw main video
-        ctx.drawImage(mainVideo, 0, 0, canvas.width, canvas.height)
-        
-        // Draw overlays
-        tracks.slice(1).forEach(track => {
-          if (!track.source.stream) return
-          
-          const overlayVideo = document.createElement('video')
-          overlayVideo.srcObject = track.source.stream
-          overlayVideo.play()
-          
-          const overlayWidth = canvas.width * track.size
-          const overlayHeight = canvas.height * track.size
-          
-          let x = 0, y = 0
-          switch (track.position) {
-            case 'top-left':
-              x = 16
-              y = 16
-              break
-            case 'top-right':
-              x = canvas.width - overlayWidth - 16
-              y = 16
-              break
-            case 'bottom-left':
-              x = 16
-              y = canvas.height - overlayHeight - 16
-              break
-            case 'bottom-right':
-              x = canvas.width - overlayWidth - 16
-              y = canvas.height - overlayHeight - 16
-              break
-          }
-          
-          ctx.drawImage(overlayVideo, x, y, overlayWidth, overlayHeight)
-        })
-        
-        requestAnimationFrame(drawLoop)
+    try {
+      console.log('Starting recording...')
+      const mainTrack = tracks.find(t => t.trackId === 'main')
+      if (!mainTrack || !mainTrack.source.stream) {
+        alert('Please select a main screen source')
+        return
       }
       
-      mainVideo.onloadedmetadata = () => {
-        drawLoop()
-      }
-    }
-    
-    drawFrame()
-    
-    // Record canvas stream
-    const canvasStream = canvas.captureStream(30) // 30 FPS
-    const mediaRecorder = new MediaRecorder(canvasStream, {
-      mimeType: 'video/webm;codecs=vp9',
-      videoBitsPerSecond: 5000000 // 5 Mbps
-    })
-    
-    mediaRecorderRef.current = mediaRecorder
-    const chunks: Blob[] = []
-    
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        chunks.push(e.data)
-      }
-    }
-    
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: 'video/webm' })
+      console.log('Main track found:', mainTrack)
       
-      // Save to file
-      const savePath = await window.clappper.savePath('recording.webm')
-      if (savePath) {
+      // Show countdown first
+      setStep('countdown')
+      setCountdown(3)
+      
+      // Countdown: 3, 2, 1...
+      for (let i = 3; i > 0; i--) {
+        setCountdown(i)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      
+      // Now switch to recording view
+      setStep('recording')
+      setIsRecording(true)
+      setRecordingTime(0)
+      
+      // Give React a tick to render the canvas UI
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      const canvas = canvasRef.current
+      if (!canvas) {
+        console.error('Canvas ref is null')
+        alert('Canvas not found. Please try again.')
+        setStep('setup')
+        setIsRecording(false)
+        return
+      }
+      
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        console.error('Could not get canvas context')
+        alert('Could not initialize canvas. Please try again.')
+        setStep('setup')
+        setIsRecording(false)
+        return
+      }
+      
+      console.log('Canvas and context ready')
+    
+      // Set canvas size to main stream resolution
+      canvas.width = 1920
+      canvas.height = 1080
+      
+      // Start recording timer
+      recordingIntervalRef.current = window.setInterval(() => {
+        setRecordingTime(t => t + 1)
+      }, 1000)
+      
+      // --- Ensure the display stream is LIVE before starting MediaRecorder ---
+      const recordStream = mainTrack.source.stream!
+      const displayVideo = document.createElement('video')
+      displayVideo.srcObject = recordStream
+      displayVideo.muted = true
+      displayVideo.playsInline = true
+      
+      // Wait for metadata
+      await new Promise<void>((resolve, reject) => {
+        const onLoaded = () => resolve()
+        const onError = (e: any) => reject(e)
+        displayVideo.addEventListener('loadedmetadata', onLoaded, { once: true })
+        displayVideo.addEventListener('error', onError, { once: true })
+        const p = displayVideo.play()
+        if (p && typeof p.then === 'function') {
+          p.catch((err: any) => {
+            console.warn('displayVideo.play() was blocked or failed, continuing after loadedmetadata', err)
+          })
+        }
+      })
+      
+      // Wait for at least one frame to render
+      await new Promise<void>((resolve) => {
+        const tracks = recordStream.getVideoTracks()
+        const vt = tracks[0]
+        console.log('Display video track before start:', vt?.getSettings(), vt?.readyState)
+        if ((displayVideo as any).requestVideoFrameCallback) {
+          (displayVideo as any).requestVideoFrameCallback(() => resolve())
+        } else {
+          // Fallback: wait a brief moment + timeupdate
+          let done = false
+          const onTime = () => { if (!done) { done = true; resolve() } }
+          displayVideo.addEventListener('timeupdate', onTime, { once: true })
+          setTimeout(() => { if (!done) resolve() }, 150)
+        }
+      })
+      
+      // --- Prepare microphone (optional) ---
+      let micStream: MediaStream | null = null
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        console.log('Microphone audio captured')
+      } catch (err) {
+        console.warn('Could not capture microphone audio:', err)
+      }
+      
+      // --- Build a composite stream instead of mutating the original ---
+      const combinedStream = new MediaStream()
+      recordStream.getVideoTracks().forEach(t => combinedStream.addTrack(t))
+      if (micStream) {
+        micStream.getAudioTracks().forEach(t => combinedStream.addTrack(t))
+      }
+      
+      console.log('Combined stream tracks:', combinedStream.getTracks().map(t => `${t.kind}:${t.readyState}`))
+      
+      // --- Pick a supported codec ---
+      const candidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm' // generic
+      ]
+      const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || ''
+      if (!mimeType) {
+        console.warn('No preferred WebM codec reported as supported. Using default MediaRecorder with no mimeType.')
+      } else {
+        console.log('Using codec:', mimeType)
+      }
+      
+      const mediaRecorder = new MediaRecorder(
+        combinedStream,
+        mimeType ? { mimeType, videoBitsPerSecond: 5000000 } : { videoBitsPerSecond: 5000000 }
+      )
+      mediaRecorderRef.current = mediaRecorder as any
+      // Track mic stream for cleanup
+      ;(mediaRecorderRef.current as any).__micStream = micStream
+    
+      const chunks: Blob[] = []
+      
+      mediaRecorder.ondataavailable = (e) => {
+        console.log('ondataavailable size:', e.data?.size)
+        if (e.data && e.data.size > 0) chunks.push(e.data)
+      }
+      
+      mediaRecorder.onerror = (e: any) => {
+        console.error('MediaRecorder error:', e?.error || e)
+      }
+      
+      mediaRecorder.onstart = () => {
+        console.log('MediaRecorder started')
+      }
+      
+      mediaRecorder.onstop = async () => {
+        console.log('MediaRecorder stopped, chunks:', chunks.length)
+        const pickedType = mimeType || 'video/webm'
+        const blob = new Blob(chunks, { type: pickedType })
+        console.log('Final blob size:', blob.size)
+      
+        if (blob.size === 0) {
+          alert('Recording failed: No data was captured. Please try again.')
+          cleanup()
+          return
+        }
+        
+        const savePath = await window.clappper.savePath('recording.webm')
+        if (!savePath) {
+          cleanup()
+          return
+        }
+        
         const reader = new FileReader()
         reader.onloadend = async () => {
           const base64data = reader.result as string
-          
           try {
             await window.clappper.saveRecording(savePath, base64data)
             
-              // Add to timeline
-              const clip = {
-                id: crypto.randomUUID(),
-                name: 'Multi-Source Recording',
-                path: savePath,
-                start: 0,
-                end: 0, // Will be set after transcoding
-                duration: 0, // Will be set after transcoding
-                order: 0,
-                trackId: 'main'
-              }
-              
-              addClips([clip])
+            const clip = {
+              id: crypto.randomUUID(),
+              name: 'Multi-Source Recording',
+              path: savePath,
+              start: 0,
+              end: 0,
+              duration: 0,
+              order: 0,
+              trackId: 'main'
+            }
+            addClips([clip])
+            
             alert(`Recording saved to:\n${savePath}`)
             cleanup()
             setIsOpen(false)
@@ -253,12 +310,17 @@ export default function ScreenRecorder() {
           }
         }
         reader.readAsDataURL(blob)
-      } else {
-        cleanup()
       }
+      
+      // Start with timeslice to create seekable video with regular keyframes
+      mediaRecorder.start(1000) // Request data every 1 second for seekability
+      console.log('Recording started successfully')
+    } catch (err) {
+      console.error('Failed to start recording:', err)
+      alert(`Failed to start recording: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setIsRecording(false)
+      setStep('setup')
     }
-    
-    mediaRecorder.start()
   }
   
   const stopRecording = () => {
@@ -274,17 +336,28 @@ export default function ScreenRecorder() {
   }
   
   const cleanup = () => {
+    // Stop all selected source tracks (display + overlays)
     tracks.forEach(track => {
-      if (track.source.stream) {
-        track.source.stream.getTracks().forEach(t => t.stop())
-      }
+      track.source.stream?.getTracks().forEach(t => t.stop())
     })
     
+    // Stop microphone if we started it
+    const mr = mediaRecorderRef.current as any
+    const micStream: MediaStream | undefined = mr?.__micStream
+    micStream?.getTracks().forEach(t => t.stop())
+    
+    // Clear timer
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
+    }
+    
+    // Reset
     setTracks(prev => prev.map(t => ({
       ...t,
       source: { id: null, name: 'None', type: 'none', stream: null }
     })))
-    
+    mediaRecorderRef.current = null
     setStep('setup')
     setIsRecording(false)
     setRecordingTime(0)
@@ -320,15 +393,19 @@ export default function ScreenRecorder() {
   return (
     <div style={{
       position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
+      top: step === 'recording' ? 'auto' : 0,
+      left: step === 'recording' ? 'auto' : 0,
+      right: step === 'recording' ? 20 : 0,
+      bottom: step === 'recording' ? 20 : 0,
       background: 'rgba(0,0,0,0.9)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      width: step === 'recording' ? '200px' : (step === 'countdown' ? '400px' : 'auto'),
+      height: step === 'recording' ? 'auto' : (step === 'countdown' ? '300px' : 'auto'),
+      borderRadius: (step === 'recording' || step === 'countdown') ? 8 : 0,
+      padding: (step === 'recording' || step === 'countdown') ? 12 : 0
     }}>
       <div style={{
         background: 'white',
@@ -557,24 +634,41 @@ export default function ScreenRecorder() {
               </button>
             </div>
           </>
+        ) : step === 'countdown' ? (
+          <>
+            {/* Countdown View */}
+            <div style={{
+              textAlign: 'center',
+              padding: 60,
+              fontSize: 120,
+              fontWeight: 'bold',
+              color: '#e74c3c',
+              fontFamily: 'monospace'
+            }}>
+              {countdown}
+            </div>
+            <div style={{
+              textAlign: 'center',
+              fontSize: 18,
+              color: 'white'
+            }}>
+              Recording starts in {countdown}...
+            </div>
+          </>
         ) : (
           <>
-            {/* Recording View */}
-            <div style={{ marginBottom: 16 }}>
-              <canvas
-                ref={canvasRef}
-                style={{
-                  width: '100%',
-                  borderRadius: 8,
-                  background: '#000'
-                }}
-              />
-            </div>
+            {/* Recording View - Minimized */}
+            <canvas
+              ref={canvasRef}
+              style={{
+                display: 'none' // Hide canvas, we're just recording it
+              }}
+            />
             
             <div style={{
               textAlign: 'center',
-              marginBottom: 16,
-              fontSize: 32,
+              marginBottom: 12,
+              fontSize: 24,
               fontWeight: 'bold',
               color: '#e74c3c',
               fontFamily: 'monospace'

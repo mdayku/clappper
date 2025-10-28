@@ -3,6 +3,12 @@ const path = require('node:path')
 const fs = require('node:fs')
 const ffmpeg = require('fluent-ffmpeg')
 
+// Suppress Chromium's verbose WGC (Windows Graphics Capture) errors in production
+if (app.isPackaged) {
+  app.commandLine.appendSwitch('disable-logging')
+  app.commandLine.appendSwitch('log-level', '3') // Only show fatal errors
+}
+
 // Determine ffmpeg path based on whether app is packaged
 const getFfmpegPath = () => {
   if (app.isPackaged) {

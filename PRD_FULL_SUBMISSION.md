@@ -557,18 +557,19 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 - [ ] Add Save Project / Load Project menu items
 
 **7.3: Additional Features**
-- [ ] Undo/redo with history stack
+- [x] **Undo/redo with history stack** - Implemented in Zustand store with Ctrl+Z/Ctrl+Shift+Z ✅
+- [x] **Screen recording with desktopCapturer + MediaRecorder** - Full screen + mic audio working ✅
+- [x] **AVI format support** - Add .avi to import filters and transcode pipeline ✅
+- [ ] Multi-source overlay compositing in screen recorder (deferred to Phase 9)
 - [ ] Text overlay component with draggable positioning
 - [ ] Crossfade transition between clips
 - [ ] Audio waveform visualization
 - [ ] Audio gain slider per clip
-- [ ] Screen recording with desktopCapturer + MediaRecorder
-- [x] **AVI format support** - Add .avi to import filters and transcode pipeline ✅
 
 ---
 
-### Phase 8: AI Video Enhancement (Future Feature)
-**Goal**: Local GPU-accelerated video upscaling using Real-ESRGAN
+### Phase 8: AI Video Enhancement & Multi-Source Recording (Future Features)
+**Goal**: Local GPU-accelerated video upscaling using Real-ESRGAN + Multi-source overlay compositing
 
 **Target Hardware**: NVIDIA GeForce RTX 4060 (user's GPU)
 - **VRAM**: 8GB
@@ -576,6 +577,13 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 - **Performance**: ~2-4 seconds per frame @ 2x upscaling
 
 **Tasks**:
+
+**8.0: Multi-Source Screen Recording Compositing** (Priority 0 - Demo Blocker)
+- [ ] Fix canvas.captureStream() in Electron OR use FFmpeg post-processing
+- [ ] Composite webcam/window overlays onto main screen during recording
+- [ ] Support up to 4 simultaneous overlay tracks with configurable size/position
+- [ ] Test with various combinations (screen+webcam, screen+window, etc.)
+- [ ] Ensure composited recording maintains 30fps and sync
 
 **8.1: Real-ESRGAN Integration** (Priority 1)
 - [ ] Research Real-ESRGAN models (x2, x4, anime variants)

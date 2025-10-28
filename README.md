@@ -2,7 +2,7 @@
 
 A lightweight desktop video editor for solo creators and educators. Quickly import, trim, reorder, and export video content without the complexity of professional NLEs.
 
-## ✨ Features (Phase 6 Complete!)
+## ✨ Features (Phase 7 Complete!)
 
 ### ✅ Multi-Track Editing
 - **5-track system** - 1 Main track + 4 Overlay tracks
@@ -48,7 +48,7 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Respects trims** - Only exports trimmed portions
 - **FFmpeg logging** - Detailed console output for debugging
 
-### 📊 UI/UX
+### 📊 UI/UX & Productivity
 - **Track badges** - Color-coded track indicators (purple, blue, green, orange)
 - **Overlay counter** - Shows active overlays in player
 - **Total duration** - Displays sequence length (MM:SS.S)
@@ -56,6 +56,30 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Wrapping toolbar** - Responsive button layout
 - **Error recovery** - Dismiss errors, meaningful error messages
 - **Clear All** - Quick reset button
+
+### ⌨️ Keyboard Shortcuts (Phase 7.1)
+- **Space** - Play/Pause
+- **Delete/Backspace** - Delete selected clip
+- **S** - Split clip at playhead
+- **← →** - Nudge playhead (0.1s, hold Shift for 1s)
+- **Ctrl+Z** - Undo
+- **Ctrl+Shift+Z** - Redo
+- **Ctrl+S** - Save Project
+- **Ctrl+O** - Load Project
+
+### 💾 Project Persistence (Phase 7.2)
+- **Autosave** - Every 5 seconds to AppData
+- **Crash recovery** - Restore previous session on launch
+- **Save/Load** - Manual project save/load via File menu
+- **Native menus** - File, Edit, View menus with shortcuts
+
+### 🎥 Screen Recording (Phase 7.3)
+- **Full screen capture** - Record entire screen with 3-second countdown
+- **Microphone audio** - Narrate while recording
+- **30 FPS recording** - Smooth playback with VP9/VP8 codec
+- **Auto-add to timeline** - Recording saved and added to main track
+- **Non-blocking UI** - Minimized widget during recording
+- **Note**: Multi-source overlay compositing (webcam/window PiP) deferred to Phase 8
 
 ## 🚀 Quickstart
 
