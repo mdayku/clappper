@@ -151,16 +151,22 @@ const createWindow = async () => {
     }
   })
   
-  // Set CSP for both dev and production
+  // Set CSP - in dev mode, remove restrictive CSP from Vite
   win.webContents.session.webRequest.onHeadersReceived((details: any, callback: any) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' blob: file: app: media: data: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-        ]
-      }
-    })
+    const responseHeaders = { ...details.responseHeaders }
+    
+    if (isDev) {
+      // In dev mode, completely remove CSP to avoid conflicts with Vite
+      delete responseHeaders['Content-Security-Policy']
+      delete responseHeaders['content-security-policy']
+    } else {
+      // In production, set a permissive CSP that allows data: URLs
+      responseHeaders['Content-Security-Policy'] = [
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' blob: file: app: media: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+      ]
+    }
+    
+    callback({ responseHeaders })
   })
   
   // Allow media:// and thumb:// protocols in the renderer
