@@ -426,11 +426,21 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 **Goal**: Let user choose output quality
 
 **Tasks**:
-- [ ] **5.1**: Add export settings panel/modal in UI
-- [ ] **5.2**: Add radio buttons: 360p / 480p / 720p / 1080p / Source
-- [ ] **5.3**: Store selection in Zustand state
-- [ ] **5.4**: Update ffmpeg command to include resolution scaling
-- [ ] **5.5**: Add preset dropdown: Fast / Medium / Slow (maps to veryfast/medium/slow)
+- [x] **5.1**: Add export settings to Zustand store ✅
+- [x] **5.2**: Add dropdowns in toolbar: 360p / 480p / 720p / 1080p / Source ✅
+- [x] **5.3**: Add quality preset dropdown: Fast / Medium / Slow ✅
+- [x] **5.4**: Update all FFmpeg export handlers to accept quality settings ✅
+- [x] **5.5**: Implement resolution scaling with aspect ratio preservation ✅
+- [x] **5.6**: Implement encoding presets (veryfast/medium/slow + CRF) ✅
+
+**Status**: ✅ **PHASE 5 COMPLETE!** Export quality controls now available in toolbar.
+
+**Implementation Details**:
+- Two dropdowns in toolbar: Resolution (360p-1080p/Source) and Quality (Fast/Medium/Slow)
+- Settings stored in Zustand store, default: 1080p + Medium
+- All export paths (trim, concat, PiP) respect quality settings
+- Resolution scaling preserves aspect ratio (`scale=-2:height`)
+- Quality presets control encoding speed vs file size tradeoff
 
 **Resolution Mapping (Preserve Aspect Ratio)**:
 - **360p**: `-vf "scale=-2:360,fps=30,format=yuv420p"`
@@ -483,6 +493,26 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 - [ ] Test AVI import with various codecs (DivX, Xvid, etc.)
 - [x] AVI files transcode automatically via existing H.264 pipeline ✅
 - [ ] Add format detection and codec warnings for unsupported AVI variants (future enhancement)
+
+**6.0.5: Multi-Overlay Export**
+- [ ] Update `export:pip` to handle multiple overlay clips (currently only exports first overlay)
+- [ ] Chain multiple `scale2ref` and `overlay` filters for each overlay track
+- [ ] Apply keyframe animations to each overlay independently
+- [ ] Handle audio mixing from multiple sources (use `amix` filter)
+- [ ] Test with 2, 3, and 4 simultaneous overlays
+- [ ] Update progress reporting for multi-overlay exports
+- [ ] Document performance implications (4 overlays = slower export)
+
+**6.0.6: PiP Length & Resolution Mismatch Handling**
+- [ ] Add UI option in Export Settings for length mismatch behavior:
+  - [ ] Option A: Cut to shortest (current default with `-shortest`)
+  - [ ] Option B: Freeze last frame of shorter video (use `tpad` filter)
+  - [ ] Option C: Loop shorter video (use `loop` filter)
+  - [ ] Option D: Speed adjust to match lengths (use `setpts` filter)
+- [ ] Store preference in Zustand store (`pipLengthMode`)
+- [ ] Update `export:pip` handler to apply selected filter
+- [ ] Add resolution mismatch handling (already handled by scale2ref, but document it)
+- [ ] Test with videos of different aspect ratios (16:9, 9:16, 4:3, 1:1)
 
 **6.1: Cancelable Exports + Temp Hygiene**
 - [ ] Track spawned ffmpeg PID

@@ -15,6 +15,25 @@ const getFfmpegPath = () => {
     }
 };
 ffmpeg.setFfmpegPath(getFfmpegPath());
+// Helper functions for export quality settings
+const getResolutionFilter = (resolution) => {
+    switch (resolution) {
+        case '360p': return 'scale=-2:360,format=yuv420p';
+        case '480p': return 'scale=-2:480,format=yuv420p';
+        case '720p': return 'scale=-2:720,format=yuv420p';
+        case '1080p': return 'scale=-2:1080,format=yuv420p';
+        case 'source': return 'format=yuv420p'; // Still normalize pixel format
+        default: return 'format=yuv420p';
+    }
+};
+const getPresetOptions = (preset) => {
+    switch (preset) {
+        case 'fast': return { preset: 'veryfast', crf: 28 };
+        case 'medium': return { preset: 'medium', crf: 23 };
+        case 'slow': return { preset: 'slow', crf: 20 };
+        default: return { preset: 'medium', crf: 23 };
+    }
+};
 let win = null;
 // Register custom protocols for serving local files
 app.whenReady().then(() => {
@@ -163,24 +182,40 @@ ipcMain.handle('transcode:h264', async (_e, args) => {
     });
 });
 ipcMain.handle('export:trim', async (_e, args) => {
-    const { input, outPath, start, end } = args;
+    const { input, outPath, start, end, resolution = '1080p', preset = 'medium' } = args;
     await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+    const resFilter = getResolutionFilter(resolution);
+    const { preset: ffmpegPreset, crf } = getPresetOptions(preset);
     return new Promise((resolve, reject) => {
         const cmd = ffmpeg(input)
             .setStartTime(start)
             .setDuration(Math.max(0, end - start))
-            .outputOptions(['-c:v libx264', '-preset veryfast', '-crf 23', '-c:a aac', '-b:a 128k'])
+            .videoFilters(resFilter) // Always apply filter (includes format normalization)
+            .outputOptions([
+            `-c:v libx264`,
+            `-preset ${ffmpegPreset}`,
+            `-crf ${crf}`,
+            `-c:a aac`,
+            `-b:a 128k`,
+            `-movflags +faststart`
+        ])
             .output(outPath)
-            .on('progress', (p) => { if (win)
-            win.webContents.send('export:progress', p.percent || 0); })
+            .on('progress', (p) => {
+            if (win) {
+                const progress = Math.min(100, Math.max(0, p.percent || 0));
+                win.webContents.send('export:progress', progress);
+            }
+        })
             .on('end', () => resolve({ ok: true, outPath }))
             .on('error', (err) => reject(err))
             .run();
     });
 });
 ipcMain.handle('export:concat', async (_e, args) => {
-    const { clips: clipSegments, outPath } = args;
+    const { clips: clipSegments, outPath, resolution = '1080p', preset = 'medium' } = args;
     await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+    const resFilter = getResolutionFilter(resolution);
+    const { preset: ffmpegPreset, crf } = getPresetOptions(preset);
     // Create temp directory for intermediate files
     const tempDir = path.join(path.dirname(outPath), '.clappper_temp_' + Date.now());
     await fs.promises.mkdir(tempDir, { recursive: true });
@@ -191,16 +226,17 @@ ipcMain.handle('export:concat', async (_e, args) => {
             const segment = clipSegments[i];
             const segmentPath = path.join(tempDir, `segment_${i}.mp4`);
             await new Promise((resolve, reject) => {
-                ffmpeg(segment.input)
+                const cmd = ffmpeg(segment.input)
                     .setStartTime(segment.start)
                     .setDuration(Math.max(0, segment.end - segment.start))
+                    .videoFilters(resFilter) // Always apply filter (includes format normalization)
                     .outputOptions([
-                    '-c:v libx264',
-                    '-preset veryfast',
-                    '-crf 23',
-                    '-c:a aac',
-                    '-b:a 128k',
-                    '-movflags +faststart'
+                    `-c:v libx264`,
+                    `-preset ${ffmpegPreset}`,
+                    `-crf ${crf}`,
+                    `-c:a aac`,
+                    `-b:a 128k`,
+                    `-movflags +faststart`
                 ])
                     .output(segmentPath)
                     .on('end', () => resolve(null))
@@ -220,8 +256,12 @@ ipcMain.handle('export:concat', async (_e, args) => {
                 .inputOptions(['-f', 'concat', '-safe', '0'])
                 .outputOptions(['-c', 'copy'])
                 .output(outPath)
-                .on('progress', (p) => { if (win)
-                win.webContents.send('export:progress', p.percent || 0); })
+                .on('progress', (p) => {
+                if (win) {
+                    const progress = Math.min(100, Math.max(0, p.percent || 0));
+                    win.webContents.send('export:progress', progress);
+                }
+            })
                 .on('end', () => resolve(null))
                 .on('error', (err) => reject(err))
                 .run();
@@ -243,11 +283,16 @@ ipcMain.handle('export:concat', async (_e, args) => {
 });
 // Export with Picture-in-Picture overlay
 ipcMain.handle('export:pip', async (_e, args) => {
-    const { mainClip, overlayClip, outPath, pipPosition, pipSize, keyframes, customX, customY } = args;
+    const { mainClip, overlayClip, outPath, pipPosition, pipSize, keyframes, customX, customY, resolution = '1080p', preset = 'medium' } = args;
     await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+    const resFilter = getResolutionFilter(resolution);
+    const { preset: ffmpegPreset, crf } = getPresetOptions(preset);
     let overlayX = '';
     let overlayY = '';
-    let scaleFilter = `[1:v]scale=iw*${pipSize}:-2[pip]`;
+    // We need to pass main video dimensions to the scale filter
+    // Use scale2ref to scale overlay relative to main video dimensions
+    // scale2ref scales [1] based on [0]'s dimensions and outputs [scaled][ref]
+    let scaleFilter = `[1:v][0:v]scale2ref='oh*mdar':'ih*${pipSize}'[pip][ref]`;
     // If we have keyframes, generate animated position/size
     if (keyframes && keyframes.length > 0) {
         // Build expression for animated X position
@@ -256,7 +301,7 @@ ipcMain.handle('export:pip', async (_e, args) => {
         const sizeExpr = buildKeyframeSizeExpression(keyframes);
         overlayX = xExpr;
         overlayY = yExpr;
-        scaleFilter = `[1:v]scale='iw*${sizeExpr}':-2[pip]`;
+        scaleFilter = `[1:v][0:v]scale2ref='oh*mdar':'ih*${sizeExpr}'[pip][ref]`;
     }
     else if (pipPosition === 'custom' && customX !== undefined && customY !== undefined) {
         // Use custom position (percentage to pixels)
@@ -297,21 +342,28 @@ ipcMain.handle('export:pip', async (_e, args) => {
             // Overlay video input
             .input(overlayClip.input)
             .inputOptions(['-ss', overlayClip.start.toString()])
-            .inputOptions(['-t', (overlayClip.end - overlayClip.start).toString()])
-            // Complex filter for PiP
-            .complexFilter([
-            // Scale overlay (possibly animated)
-            scaleFilter,
-            // Overlay on main video at specified position (possibly animated)
-            `[0:v][pip]overlay=${overlayX}:${overlayY}:eval=frame,format=yuv420p[v]`
-        ])
+            .inputOptions(['-t', (overlayClip.end - overlayClip.start).toString()]);
+        // Build complex filter with resolution scaling and format normalization
+        const filters = [
+            `[0:v]${resFilter}[main]`, // Scale/normalize main video
+            scaleFilter.replace('[0:v]', '[main]'), // Scale overlay relative to main (replace input with processed main)
+            `[ref][pip]overlay=${overlayX}:${overlayY}:eval=frame[v]` // Overlay (ref is the main video output from scale2ref)
+        ];
+        console.log('PiP Export Filters:', filters);
+        console.log('Main clip:', mainClip);
+        console.log('Overlay clip:', overlayClip);
+        console.log('PiP settings:', { pipPosition, pipSize, overlayX, overlayY });
+        cmd.complexFilter(filters)
             // Map output streams
+            // Note: FFmpeg will use the first available audio stream
             .outputOptions([
             '-map', '[v]', // Use filtered video
-            '-map', '0:a', // Use main audio only
+            '-map', '0:a?', // Try main audio first
+            '-map', '1:a?', // Fallback to overlay audio
+            '-map_metadata', '0', // Use main video's metadata
             '-c:v', 'libx264', // H.264 codec
-            '-preset', 'veryfast', // Fast encoding
-            '-crf', '23', // Good quality
+            `-preset`, `${ffmpegPreset}`,
+            `-crf`, `${crf}`,
             '-pix_fmt', 'yuv420p', // Compatibility
             '-c:a', 'aac', // AAC audio
             '-ar', '48000', // 48kHz sample rate
@@ -322,8 +374,11 @@ ipcMain.handle('export:pip', async (_e, args) => {
         ])
             .output(outPath)
             .on('progress', (p) => {
-            if (win)
-                win.webContents.send('export:progress', p.percent || 0);
+            if (win) {
+                // Clamp progress between 0 and 100
+                const progress = Math.min(100, Math.max(0, p.percent || 0));
+                win.webContents.send('export:progress', progress);
+            }
         })
             .on('end', () => resolve({ ok: true, outPath }))
             .on('error', (err) => reject(err));

@@ -33,10 +33,14 @@ declare global {
         outPath: string
         start: number
         end: number
+        resolution?: string
+        preset?: string
       }) => Promise<{ ok: boolean; outPath: string }>
       exportConcat: (payload: {
         clips: Array<{input: string; start: number; end: number}>
         outPath: string
+        resolution?: string
+        preset?: string
       }) => Promise<{ ok: boolean; outPath: string }>
       exportPip: (payload: {
         mainClip: {input: string; start: number; end: number}
@@ -47,6 +51,8 @@ declare global {
         keyframes?: Array<{time: number; x: number; y: number; size: number}>
         customX?: number
         customY?: number
+        resolution?: string
+        preset?: string
       }) => Promise<{ ok: boolean; outPath: string }>
       onExportProgress: (callback: (percent: number) => void) => void
       onTranscodeProgress: (callback: (percent: number) => void) => void

@@ -260,6 +260,12 @@ export default function Player() {
   const currentPipPos = getPipPositionAtTime(playhead)
   const pipSizePercent = Math.round(currentPipPos.size * 100)
   
+  // Calculate overlay dimensions to match export behavior
+  // Export uses: scale2ref='oh*mdar':'ih*${pipSize}' 
+  // This means overlay height = main height * pipSize, width maintains aspect ratio
+  // In preview, we need to do the same relative to container height
+  const overlayHeightPercent = pipSizePercent // % of container height
+  
   // Handle dragging the PiP overlay (for first overlay only - simplified)
   const handlePipMouseDown = (overlayIndex: number) => (e: React.MouseEvent) => {
     if (!containerRef.current) return
@@ -380,7 +386,8 @@ export default function Player() {
                 position: 'absolute',
                 left: `${posX * 100}%`,
                 top: `${posY * 100}%`,
-                width: `${pipSizePercent}%`,
+                height: `${overlayHeightPercent}%`, // Size relative to container HEIGHT (matches export)
+                width: 'auto', // Width will be calculated to maintain aspect ratio
                 cursor: isDragging === index ? 'grabbing' : 'grab',
                 zIndex: 10 + index,
                 userSelect: 'none'
@@ -389,8 +396,8 @@ export default function Player() {
               <video 
                 ref={overlayVideoRefs[index]}
                 style={{ 
-                  width: '100%',
-                  height: 'auto',
+                  height: '100%',
+                  width: 'auto',
                   objectFit: 'contain',
                   border: selectedClip?.id === clip.id ? `3px solid ${borderColor}` : '2px solid white',
                   borderRadius: 4,

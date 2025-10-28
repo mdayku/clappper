@@ -1,12 +1,21 @@
 import { create } from 'zustand'
 import { Clip, Track, PipPosition, PipSettings } from './lib/types'
 
+export type ExportResolution = '360p' | '480p' | '720p' | '1080p' | 'source'
+export type ExportPreset = 'fast' | 'medium' | 'slow'
+
+export interface ExportSettings {
+  resolution: ExportResolution
+  preset: ExportPreset
+}
+
 interface State {
   tracks: Track[]
   selectedId?: string
   playhead: number
   pipSettings: PipSettings
   visibleOverlayCount: number // How many overlay tracks to show (0-4)
+  exportSettings: ExportSettings
   
   // Track operations
   getTrack: (trackId: string) => Track | undefined
@@ -25,6 +34,7 @@ interface State {
   setPlayhead: (t: number) => void
   select: (id?: string) => void
   setPipSettings: (settings: Partial<PipSettings>) => void
+  setExportSettings: (settings: Partial<ExportSettings>) => void
   
   // Timeline operations
   reorderClips: (fromIndex: number, toIndex: number, trackId: string) => void
@@ -94,6 +104,10 @@ export const useStore = create<State>((set, get) => ({
     keyframes: [],
     customX: undefined,
     customY: undefined
+  },
+  exportSettings: {
+    resolution: '1080p',
+    preset: 'medium'
   },
   
   // Track getters
@@ -171,6 +185,9 @@ export const useStore = create<State>((set, get) => ({
   select: (id) => set({ selectedId: id }),
   setPipSettings: (settings) => set(s => ({ 
     pipSettings: { ...s.pipSettings, ...settings } 
+  })),
+  setExportSettings: (settings) => set(s => ({
+    exportSettings: { ...s.exportSettings, ...settings }
   })),
   setVisibleOverlayCount: (count) => set({ visibleOverlayCount: Math.max(0, Math.min(4, count)) }),
   

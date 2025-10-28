@@ -2,7 +2,7 @@
 
 A lightweight desktop video editor for solo creators and educators. Quickly import, trim, reorder, and export video content without the complexity of professional NLEs.
 
-## ✨ Features (Phase 4 Complete!)
+## ✨ Features (Phase 5 Complete!)
 
 ### ✅ Multi-Track Editing
 - **5-track system** - 1 Main track + 4 Overlay tracks
@@ -36,6 +36,8 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 ### 💾 Export
 - **PiP export** - Exports main video with animated overlay(s)
 - **Multi-clip concatenation** - Exports all clips as one seamless video
+- **Quality presets** - Choose resolution (360p/480p/720p/1080p/Source)
+- **Encoding speed** - Fast/Medium/Slow presets for size vs speed tradeoff
 - **Save As dialog** - Choose location and filename before export
 - **Progress tracking** - Real-time export progress updates
 - **H.264/AAC output** - Universal MP4 format

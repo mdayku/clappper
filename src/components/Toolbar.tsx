@@ -7,6 +7,7 @@ export default function Toolbar() {
   const [isImporting, setIsImporting] = useState(false)
   const [transcodeProgress, setTranscodeProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [showExportModal, setShowExportModal] = useState(false)
 
   React.useEffect(() => {
     if (window.clappper) {
@@ -125,15 +126,22 @@ export default function Toolbar() {
     }
   }
 
+  const handleExportClick = () => {
+    setShowExportModal(true)
+  }
+
   const exportSelected = async () => {
     try {
+      setShowExportModal(false)
       setError(null)
       const mainTrack = useStore.getState().getMainTrack()
-      const overlayTrack = useStore.getState().getOverlayTrack()
+      const allOverlayTracks = useStore.getState().getOverlayTracks()
       const pipSettings = useStore.getState().pipSettings
+      const exportSettings = useStore.getState().exportSettings
       
       const mainClips = mainTrack.clips
-      const overlayClips = overlayTrack.clips
+      // Get clips from ALL overlay tracks that have clips
+      const overlayClips = allOverlayTracks.flatMap(track => track.clips)
       
       if (mainClips.length === 0) {
         setError('Please add clips to the main track first')
@@ -162,9 +170,11 @@ export default function Toolbar() {
       setIsExporting(true)
       setProgress(0)
       
-      // Check if we need PiP export (both tracks have clips)
+      // Check if we need PiP export (main track + at least one overlay)
       if (mainClips.length > 0 && overlayClips.length > 0) {
-        // PiP export (simplified: first clip from each track)
+        // PiP export: Export first main clip with first overlay clip
+        // TODO: Support multiple overlays in one export (Phase 6)
+        console.log(`Exporting PiP: ${mainClips.length} main clip(s), ${overlayClips.length} overlay clip(s)`)
         await window.clappper.exportPip({
           mainClip: {
             input: mainClips[0].path,
@@ -181,7 +191,9 @@ export default function Toolbar() {
           pipSize: pipSettings.size,
           keyframes: pipSettings.keyframes.length > 0 ? pipSettings.keyframes : undefined,
           customX: pipSettings.customX,
-          customY: pipSettings.customY
+          customY: pipSettings.customY,
+          resolution: exportSettings.resolution,
+          preset: exportSettings.preset
         })
       } else if (mainClips.length === 1) {
         // Single clip: use trim export
@@ -189,7 +201,9 @@ export default function Toolbar() {
           input: mainClips[0].path, 
           outPath: savePath, 
           start: mainClips[0].start, 
-          end: mainClips[0].end 
+          end: mainClips[0].end,
+          resolution: exportSettings.resolution,
+          preset: exportSettings.preset
         })
       } else {
         // Multiple clips on main track: concatenate
@@ -201,7 +215,9 @@ export default function Toolbar() {
         
         await window.clappper.exportConcat({
           clips: clipSegments,
-          outPath: savePath
+          outPath: savePath,
+          resolution: exportSettings.resolution,
+          preset: exportSettings.preset
         })
       }
       
@@ -230,6 +246,8 @@ export default function Toolbar() {
   const allClips = useStore.getState().getAllClips()
   const visibleOverlayCount = useStore(s => s.visibleOverlayCount)
   const setVisibleOverlayCount = useStore(s => s.setVisibleOverlayCount)
+  const exportSettings = useStore(s => s.exportSettings)
+  const setExportSettings = useStore(s => s.setExportSettings)
 
   return (
     <div style={{ display:'flex', flexDirection: 'column', borderBottom: '1px solid #eee' }}>
@@ -237,8 +255,8 @@ export default function Toolbar() {
         <button onClick={onImport} disabled={isExporting || isImporting}>
           {isImporting ? 'Importing...' : 'Import'}
         </button>
-        <button onClick={exportSelected} disabled={isExporting || isImporting || allClips.length === 0}>
-          {isExporting ? 'Exporting...' : 'Export Selected (Trim)'}
+        <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
+          {isExporting ? 'Exporting...' : 'Export'}
         </button>
         <button 
           onClick={clearAll} 
@@ -285,6 +303,157 @@ export default function Toolbar() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+      
+      {/* Export Settings Modal */}
+      {(showExportModal || isExporting) && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 8,
+            padding: 24,
+            minWidth: 400,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          }}>
+            <h2 style={{ margin: '0 0 20px 0', fontSize: 18, fontWeight: 'bold' }}>
+              {isExporting ? 'Exporting...' : 'Export Settings'}
+            </h2>
+            
+            {isExporting ? (
+              // Show progress during export
+              <div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ 
+                    width: '100%', 
+                    height: 24, 
+                    background: '#f0f0f0', 
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      width: `${progress}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #4CAF50, #45a049)',
+                      transition: 'width 0.3s ease',
+                      borderRadius: 12
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      color: progress > 50 ? 'white' : '#333'
+                    }}>
+                      {progress.toFixed(0)}%
+                    </div>
+                  </div>
+                </div>
+                <p style={{ fontSize: 14, color: '#666', textAlign: 'center', margin: 0 }}>
+                  Please wait... This may take a few minutes.
+                </p>
+              </div>
+            ) : (
+              // Show settings form
+              <div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                Resolution
+              </label>
+              <select 
+                value={exportSettings.resolution}
+                onChange={(e) => setExportSettings({ resolution: e.target.value as any })}
+                style={{ 
+                  width: '100%',
+                  padding: '8px 12px', 
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="360p">360p (Low Quality)</option>
+                <option value="480p">480p (SD)</option>
+                <option value="720p">720p (HD)</option>
+                <option value="1080p">1080p (Full HD)</option>
+                <option value="source">Source (No Scaling)</option>
+              </select>
+            </div>
+            
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+                Encoding Quality
+              </label>
+              <select 
+                value={exportSettings.preset}
+                onChange={(e) => setExportSettings({ preset: e.target.value as any })}
+                style={{ 
+                  width: '100%',
+                  padding: '8px 12px', 
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="fast">Fast (Larger File, Quick Export)</option>
+                <option value="medium">Medium (Balanced)</option>
+                <option value="slow">Slow (Smaller File, Best Quality)</option>
+              </select>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  background: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={exportSelected}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#007bff',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Export Now
+              </button>
+            </div>
+            </div>
+            )}
+          </div>
         </div>
       )}
     </div>
