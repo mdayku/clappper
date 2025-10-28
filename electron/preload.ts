@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('clappper', {
     ipcRenderer.removeAllListeners('transcode:progress')
     ipcRenderer.on('transcode:progress', (_e: any, pct: number) => cb(pct))
   },
-  cancelExport: () => ipcRenderer.invoke('export:cancel')
+  cancelExport: () => ipcRenderer.invoke('export:cancel'),
+  saveProject: (filePath: string, state: any) => ipcRenderer.invoke('project:save', { filePath, state }),
+  loadProject: (filePath: string) => ipcRenderer.invoke('project:load', filePath),
+  getAutosavePath: () => ipcRenderer.invoke('project:autosave-path'),
+  checkAutosave: () => ipcRenderer.invoke('project:check-autosave')
 })
 

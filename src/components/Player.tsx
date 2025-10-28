@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 
-export default function Player() {
+interface PlayerProps {
+  isPlaying: boolean
+  setIsPlaying: (playing: boolean) => void
+}
+
+export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
   const mainVideoRef = useRef<HTMLVideoElement>(null)
   const overlayVideoRefs = [
     useRef<HTMLVideoElement>(null),
@@ -143,6 +148,28 @@ export default function Player() {
     })
   }, [overlayClips.map(c => c ? `${c.id}-${c.start}-${c.end}` : '').join(',')])
 
+  // Handle play/pause from keyboard shortcut
+  useEffect(() => {
+    const mainV = mainVideoRef.current
+    if (!mainV) return
+    
+    if (isPlaying) {
+      mainV.play().catch(err => console.error('Play failed:', err))
+      overlayVideoRefs.forEach(ref => {
+        if (ref.current) {
+          ref.current.play().catch(err => console.error('Overlay play failed:', err))
+        }
+      })
+    } else {
+      mainV.pause()
+      overlayVideoRefs.forEach(ref => {
+        if (ref.current) {
+          ref.current.pause()
+        }
+      })
+    }
+  }, [isPlaying])
+  
   // Sync playback between main and all overlays
   useEffect(() => {
     const mainV = mainVideoRef.current

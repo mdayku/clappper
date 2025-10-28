@@ -270,6 +270,60 @@ export default function Toolbar() {
       setError(null)
     }
   }
+  
+  const saveProject = async () => {
+    try {
+      const savePath = await window.clappper.savePath('project.json')
+      if (!savePath) return
+      
+      const store = useStore.getState()
+      const state = {
+        version: 1,
+        tracks: store.tracks,
+        selectedId: store.selectedId,
+        playhead: store.playhead,
+        pipSettings: store.pipSettings,
+        exportSettings: store.exportSettings,
+        visibleOverlayCount: store.visibleOverlayCount,
+        timestamp: Date.now()
+      }
+      
+      await window.clappper.saveProject(savePath, state)
+      alert(`Project saved to:\n${savePath}`)
+    } catch (err) {
+      console.error('Save project failed:', err)
+      setError(`Save failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+  
+  const loadProject = async () => {
+    try {
+      const files = await window.clappper.openFiles()
+      if (files.length === 0) return
+      
+      const filePath = files[0]
+      if (!filePath.endsWith('.json')) {
+        setError('Please select a .json project file')
+        return
+      }
+      
+      const { ok, state } = await window.clappper.loadProject(filePath)
+      if (ok && state) {
+        const store = useStore.getState()
+        store.tracks = state.tracks || store.tracks
+        store.selectedId = state.selectedId || null
+        store.playhead = state.playhead || 0
+        store.pipSettings = state.pipSettings || store.pipSettings
+        store.exportSettings = state.exportSettings || store.exportSettings
+        store.visibleOverlayCount = state.visibleOverlayCount ?? store.visibleOverlayCount
+        
+        alert('Project loaded successfully!')
+      }
+    } catch (err) {
+      console.error('Load project failed:', err)
+      setError(`Load failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
 
   const allClips = useStore.getState().getAllClips()
   const visibleOverlayCount = useStore(s => s.visibleOverlayCount)
@@ -285,6 +339,12 @@ export default function Toolbar() {
         </button>
         <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export'}
+        </button>
+        <button onClick={saveProject} disabled={isExporting || isImporting || allClips.length === 0}>
+          Save Project
+        </button>
+        <button onClick={loadProject} disabled={isExporting || isImporting}>
+          Load Project
         </button>
         <button 
           onClick={clearAll} 

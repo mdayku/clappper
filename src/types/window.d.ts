@@ -57,6 +57,10 @@ declare global {
       onExportProgress: (callback: (percent: number) => void) => void
       onTranscodeProgress: (callback: (percent: number) => void) => void
       cancelExport: () => Promise<{ ok: boolean; cancelled?: boolean; message?: string }>
+      saveProject: (filePath: string, state: any) => Promise<{ ok: boolean }>
+      loadProject: (filePath: string) => Promise<{ ok: boolean; state: any }>
+      getAutosavePath: () => Promise<string>
+      checkAutosave: () => Promise<{ exists: boolean; path?: string }>
     }
   }
 }

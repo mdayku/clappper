@@ -26,6 +26,43 @@ ipcMain.handle('export:cancel', async () => {
     }
     return { ok: false, message: 'No export in progress' };
 });
+// Project save/load handlers
+ipcMain.handle('project:save', async (_e, args) => {
+    const { filePath, state } = args;
+    try {
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.promises.writeFile(filePath, JSON.stringify(state, null, 2), 'utf8');
+        return { ok: true };
+    }
+    catch (err) {
+        console.error('Save project failed:', err);
+        throw err;
+    }
+});
+ipcMain.handle('project:load', async (_e, filePath) => {
+    try {
+        const data = await fs.promises.readFile(filePath, 'utf8');
+        return { ok: true, state: JSON.parse(data) };
+    }
+    catch (err) {
+        console.error('Load project failed:', err);
+        throw err;
+    }
+});
+ipcMain.handle('project:autosave-path', async () => {
+    const autosavePath = path.join(app.getPath('userData'), 'autosave.json');
+    return autosavePath;
+});
+ipcMain.handle('project:check-autosave', async () => {
+    const autosavePath = path.join(app.getPath('userData'), 'autosave.json');
+    try {
+        await fs.promises.access(autosavePath);
+        return { exists: true, path: autosavePath };
+    }
+    catch {
+        return { exists: false };
+    }
+});
 // Helper functions for export quality settings
 const getResolutionFilter = (resolution) => {
     switch (resolution) {
