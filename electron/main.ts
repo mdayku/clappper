@@ -72,9 +72,12 @@ ipcMain.handle('project:check-autosave', async () => {
 ipcMain.handle('screen:get-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['window', 'screen'],
-    thumbnailSize: { width: 150, height: 150 }
+    thumbnailSize: { width: 150, height: 150 },
+    fetchWindowIcons: true
   })
   
+  // Include ALL sources, including the Clappper window itself
+  // This allows recording the app for demo purposes
   return sources.map((source: any) => ({
     id: source.id,
     name: source.name,
