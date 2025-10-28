@@ -97,6 +97,8 @@ export default function Toolbar() {
         const pathParts = ('originalPath' in m! ? m!.originalPath : m!.path).split(/[/\\]/)
         const fileName = pathParts[pathParts.length - 1]
         
+        // TODO Phase 9: Generate filmstrip thumbnails here
+        
         return {
           id: crypto.randomUUID(), 
           path: m!.path,
@@ -108,7 +110,7 @@ export default function Toolbar() {
           order: 0, // Will be reassigned by store
           trackId: 'main', // Default to main track
           width: m!.width, 
-          height: m!.height 
+          height: m!.height
         }
       })
       

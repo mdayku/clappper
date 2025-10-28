@@ -69,6 +69,26 @@ export default function Player() {
     return () => v.removeEventListener('loadedmetadata', onLoadedMetadata)
   }, [mainClip?.path, mainClip?.id])
 
+  // Update video currentTime when trim points change
+  const prevTrimRef = React.useRef({ start: mainClip?.start, end: mainClip?.end })
+  useEffect(() => {
+    const v = mainVideoRef.current
+    if (!v || !mainClip || v.readyState < 2) return
+    
+    const prev = prevTrimRef.current
+    
+    // If start changed, seek to new start
+    if (prev.start !== mainClip.start) {
+      v.currentTime = mainClip.start
+    }
+    // If end changed (but not start), seek to new end
+    else if (prev.end !== mainClip.end) {
+      v.currentTime = mainClip.end
+    }
+    
+    prevTrimRef.current = { start: mainClip.start, end: mainClip.end }
+  }, [mainClip?.start, mainClip?.end])
+
   // Load overlay videos
   useEffect(() => {
     overlayClips.forEach((clip, index) => {
@@ -87,6 +107,15 @@ export default function Player() {
       return () => v.removeEventListener('loadedmetadata', onLoadedMetadata)
     })
   }, [overlayClips.map(c => c?.path).join(','), overlayClips.map(c => c?.id).join(',')])
+
+  // Update overlay videos currentTime when trim points change
+  useEffect(() => {
+    overlayClips.forEach((clip, index) => {
+      const v = overlayVideoRefs[index].current
+      if (!v || !clip || v.readyState < 2) return
+      v.currentTime = clip.start
+    })
+  }, [overlayClips.map(c => c ? `${c.id}-${c.start}-${c.end}` : '').join(',')])
 
   // Sync playback between main and all overlays
   useEffect(() => {

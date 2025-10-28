@@ -383,21 +383,28 @@ ffmpeg -i main.mp4 -i overlay.mp4 -filter_complex \
 
 ---
 
-### Phase 4: Thumbnails (Priority 3)
+### Phase 4: Thumbnails (Priority 3) - DEFERRED TO PHASE 9
 **Goal**: Show preview thumbnails for each clip and trim points
 
-**Tasks**:
-- [ ] **4.1**: Add IPC handler to generate thumbnail using ffmpeg
-- [ ] **4.2**: Create cache directory: `{appData}/Clappper/thumbs/`
-- [ ] **4.3**: Generate thumbs to cache: `thumbs/{hash}-{t}.jpg` (not base64)
-- [ ] **4.4**: Update Clip model to store thumbnail path
-- [ ] **4.5**: Render thumbnail as background in ClipItem
-- [ ] **4.6**: Throttle & dedupe thumbnail requests (one job per clip+timestamp)
-- [ ] **4.7**: Add collapsible trim point preview thumbnails above timeline handles
-  - Shows frame at exact trim point (~100px wide)
-  - Collapsible UI control (minimize/restore/close)
-  - Reuses cached thumbnails
-  - Position with absolute positioning and z-index layering
+**Decision**: Single thumbnails in wrong aspect ratio aren't useful. Filmstrip thumbnails (cascading across clip width) would be better UX but require more implementation time. Deferred to Phase 9 for post-demo enhancement.
+
+**Tasks** (Moved to Phase 9):
+- [ ] **4.1**: Generate multiple thumbnails per clip (filmstrip style)
+- [ ] **4.2**: Tile thumbnails horizontally across clip width
+- [ ] **4.3**: Cache management for multiple thumbnails
+- [ ] **4.4**: CSP configuration for thumb:// protocol
+- [ ] **4.5**: Performance optimization for many thumbnails
+
+**Status**: ⏸️ **PHASE 4 DEFERRED** - Basic infrastructure built, filmstrip implementation moved to Phase 9.
+
+**Implementation Details**:
+- Thumbnails generated at 10% into video (or 1s, whichever is smaller)
+- 160px wide, aspect ratio preserved
+- Cached in `{userData}/Clappper/thumbs/{clipId}-{timestamp}.jpg`
+- Cache check before generation (no duplicate work)
+- Displayed as background image with dark gradient overlay for text readability
+- Text shadow added for better contrast
+- Automatic generation during import process
 
 **Thumbnail Generation (No Jank)**:
 ```bash
@@ -732,6 +739,44 @@ window.clappper.onEnhanceProgress((data: {
 - [ ] Colorization for black & white videos
 - [ ] Stabilization using AI motion prediction
 - [ ] Cloud API fallback for non-NVIDIA GPUs
+
+---
+
+### Phase 9: Filmstrip Thumbnails (Priority: Low, Post-Demo)
+**Goal**: Add cascading thumbnail previews across timeline clips for better visual reference
+
+**Why Deferred**: Single thumbnails in wrong aspect ratio provide little value. Filmstrip thumbnails (multiple frames tiled horizontally) would be much more useful but require additional implementation time.
+
+**Tasks**:
+- [ ] **9.1**: Generate 5-10 thumbnails per clip at evenly spaced intervals
+- [ ] **9.2**: Calculate optimal thumbnail count based on clip width
+- [ ] **9.3**: Tile thumbnails horizontally with CSS background positioning
+- [ ] **9.4**: Add CSP directive for `thumb://` protocol
+- [ ] **9.5**: Implement smart caching (check existing thumbnails before generating)
+- [ ] **9.6**: Add loading states during thumbnail generation
+- [ ] **9.7**: Optimize for performance with many clips
+
+**Technical Approach**:
+```typescript
+// Generate thumbnails at evenly spaced intervals
+const thumbnailCount = Math.min(10, Math.max(3, Math.floor(clipDuration / 10)))
+const interval = clipDuration / (thumbnailCount + 1)
+for (let i = 1; i <= thumbnailCount; i++) {
+  const timestamp = interval * i
+  await generateThumbnail(clipPath, timestamp, `${clipId}-${i}`)
+}
+
+// CSS: Tile thumbnails across clip width
+background: url(thumb://path1) 0% 0% / 20% 100%,
+            url(thumb://path2) 20% 0% / 20% 100%,
+            url(thumb://path3) 40% 0% / 20% 100%,
+            // ... etc
+```
+
+**Benefits**:
+- Visual scrubbing: See clip content at a glance
+- Better organization: Identify clips without playing them
+- Professional look: Similar to Premiere Pro/Final Cut Pro
 
 ---
 

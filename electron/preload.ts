@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('clappper', {
   openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
   savePath: (defaultName: string) => ipcRenderer.invoke('dialog:savePath', defaultName),
   ffprobe: (filePath: string) => ipcRenderer.invoke('ffprobe:metadata', filePath),
+  generateThumbnail: (payload: { input: string; timestamp: number; clipId: string }) => ipcRenderer.invoke('thumbnail:generate', payload),
   transcode: (payload: { input: string; output: string }) => ipcRenderer.invoke('transcode:h264', payload),
   exportTrim: (payload: { input: string; outPath: string; start: number; end: number }) => ipcRenderer.invoke('export:trim', payload),
   exportConcat: (payload: { clips: Array<{input: string; start: number; end: number}>; outPath: string }) => ipcRenderer.invoke('export:concat', payload),

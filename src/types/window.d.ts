@@ -19,6 +19,11 @@ declare global {
           height?: number
         }>
       }>
+      generateThumbnail: (payload: {
+        input: string
+        timestamp: number
+        clipId: string
+      }) => Promise<string>
       transcode: (payload: {
         input: string
         output: string

@@ -2,7 +2,7 @@
 
 A lightweight desktop video editor for solo creators and educators. Quickly import, trim, reorder, and export video content without the complexity of professional NLEs.
 
-## ✨ Features (Phase 3 Complete!)
+## ✨ Features (Phase 4 Complete!)
 
 ### ✅ Multi-Track Editing
 - **5-track system** - 1 Main track + 4 Overlay tracks
@@ -11,6 +11,7 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Drag between tracks** - Move clips between main and overlay tracks
 - **Configurable overlays** - Show 0-4 overlay tracks via dropdown
 - **Timeline view** - All tracks rendered with scrollable layout
+- **Beautiful thumbnails** - Auto-generated video previews on every clip
 - **Trim controls** - Visual handles for precise in/out points
 - **Split at playhead** - Split any clip into two segments
 - **Delete clips** - Remove unwanted clips with confirmation
@@ -47,6 +48,8 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Total duration** - Displays sequence length (MM:SS.S)
 - **Scrollable timeline** - Handles many tracks gracefully
 - **Wrapping toolbar** - Responsive button layout
+- **Video thumbnails** - Beautiful preview images on timeline clips
+- **Smart caching** - Thumbnails cached locally for instant loading
 - **Error recovery** - Remove failed clips, dismiss errors
 - **Clear All** - Quick reset button
 

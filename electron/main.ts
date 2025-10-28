@@ -19,10 +19,16 @@ ffmpeg.setFfmpegPath(getFfmpegPath())
 
 let win: typeof BrowserWindow.prototype | null = null
 
-// Register custom protocol for serving local video files
+// Register custom protocols for serving local files
 app.whenReady().then(() => {
   protocol.registerFileProtocol('media', (request: any, callback: any) => {
     const url = request.url.substring('media://'.length)
+    const decodedPath = decodeURIComponent(url)
+    callback({ path: decodedPath })
+  })
+  
+  protocol.registerFileProtocol('thumb', (request: any, callback: any) => {
+    const url = request.url.substring('thumb://'.length)
     const decodedPath = decodeURIComponent(url)
     callback({ path: decodedPath })
   })
@@ -42,9 +48,15 @@ const createWindow = async () => {
     }
   })
   
-  // Allow media:// protocol in the renderer
+  // Allow media:// and thumb:// protocols in the renderer
   win.webContents.session.protocol.registerFileProtocol('media', (request: any, callback: any) => {
     const url = request.url.substring('media://'.length)
+    const decodedPath = decodeURIComponent(url)
+    callback({ path: decodedPath })
+  })
+  
+  win.webContents.session.protocol.registerFileProtocol('thumb', (request: any, callback: any) => {
+    const url = request.url.substring('thumb://'.length)
     const decodedPath = decodeURIComponent(url)
     callback({ path: decodedPath })
   })
@@ -106,6 +118,38 @@ ipcMain.handle('ffprobe:metadata', async (_e: any, filePath: string) => {
         streams: data.streams.map((s: any) => ({ codec_type: s.codec_type, codec_name: s.codec_name, width: s.width, height: s.height }))
       })
     })
+  })
+})
+
+// Generate thumbnail for a clip at a specific timestamp
+ipcMain.handle('thumbnail:generate', async (_e: any, args: { input: string; timestamp: number; clipId: string }) => {
+  const { input, timestamp, clipId } = args
+  
+  // Create cache directory if it doesn't exist
+  const cacheDir = path.join(app.getPath('userData'), 'thumbs')
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true })
+  }
+  
+  // Generate cache filename
+  const thumbFilename = `${clipId}-${timestamp.toFixed(2)}.jpg`
+  const thumbPath = path.join(cacheDir, thumbFilename)
+  
+  // Check if thumbnail already exists in cache
+  if (fs.existsSync(thumbPath)) {
+    return thumbPath
+  }
+  
+  // Generate thumbnail using ffmpeg
+  return new Promise((resolve, reject) => {
+    ffmpeg(input)
+      .seekInput(timestamp)
+      .frames(1)
+      .videoFilters('scale=160:-1')
+      .output(thumbPath)
+      .on('end', () => resolve(thumbPath))
+      .on('error', (err: any) => reject(err))
+      .run()
   })
 })
 

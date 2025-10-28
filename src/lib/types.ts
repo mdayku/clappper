@@ -10,6 +10,7 @@ export type Clip = {
   trackId: string // Which track this clip belongs to
   width?: number
   height?: number
+  thumbnailPath?: string // Path to cached thumbnail image
 }
 
 export type Track = {

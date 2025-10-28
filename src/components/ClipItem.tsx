@@ -34,6 +34,8 @@ export default function ClipItem({
     }
   }
   
+  // TODO Phase 9: Implement filmstrip thumbnails (cascading thumbnails across clip width)
+  
   return (
     <div
       draggable
@@ -58,13 +60,15 @@ export default function ClipItem({
         transition: 'all 0.2s',
         boxShadow: isSelected ? '0 2px 8px rgba(74, 158, 255, 0.4)' : '0 1px 3px rgba(0,0,0,0.2)',
         overflow: 'hidden',
-        opacity: isDragOver ? 0.7 : 1
+        opacity: isDragOver ? 0.7 : 1,
+        position: 'relative'
       }}
     >
       <div style={{ 
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        textShadow: '0 1px 2px rgba(0,0,0,0.8)'
       }}>
         <div style={{ 
           fontWeight: isSelected ? 'bold' : 'normal',
@@ -92,7 +96,7 @@ export default function ClipItem({
           ✕
         </button>
       </div>
-      <div style={{ fontSize: '10px', opacity: 0.9 }}>
+      <div style={{ fontSize: '10px', opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
         {trimmedDuration.toFixed(1)}s
         {clip.start > 0 || clip.end < clip.duration ? ' (trimmed)' : ''}
       </div>

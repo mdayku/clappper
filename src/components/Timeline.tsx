@@ -156,6 +156,92 @@ export default function Timeline() {
 
   return (
     <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 500px)' }}>
+      {/* Trim Controls for Selected Clip - MOVED TO TOP */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>TRIM SELECTED CLIP: {sel.name}</span>
+          <button
+            onClick={() => {
+              const { playhead } = useStore.getState()
+              // Playhead is relative to clip's start
+              const splitTime = sel.start + playhead
+              
+              // Validate split time is within clip bounds
+              if (splitTime <= sel.start || splitTime >= sel.end) {
+                alert('Playhead must be between clip start and end to split')
+                return
+              }
+              
+              if (confirm(`Split "${sel.name}" at ${(splitTime - sel.start).toFixed(2)}s?`)) {
+                useStore.getState().splitClip(sel.id, splitTime)
+              }
+            }}
+            style={{
+              padding: '4px 12px',
+              background: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 'bold'
+            }}
+            title="Split clip at current playhead position"
+          >
+            Split at Playhead
+          </button>
+        </div>
+        <div ref={containerRef} style={{ width, height: 64, position:'relative', background:'#fafafa', border:'1px solid #ddd', margin:'8px 0', userSelect: 'none' }}>
+          {/* Full duration background */}
+          <div style={{ position:'absolute', left: 0, width: '100%', top:0, bottom:0, background:'#f0f0f0' }} />
+          {/* Trimmed out regions (darker) */}
+          {left > 0 && (
+            <div style={{ position:'absolute', left: 0, width: left, top:0, bottom:0, background:'#ddd', opacity: 0.7 }} />
+          )}
+          {right < width && (
+            <div style={{ position:'absolute', left: right, width: width - right, top:0, bottom:0, background:'#ddd', opacity: 0.7 }} />
+          )}
+          {/* Selected range */}
+          <div style={{ position:'absolute', left: left, width: Math.max(2, right-left), top:0, bottom:0, background:'#cde4ff' }} />
+          {/* Start handle */}
+          <div 
+            onMouseDown={handleMouseDown('start')}
+            style={{ 
+              position:'absolute', 
+              left: Math.max(0, left-4), 
+              top:0, 
+              bottom:0, 
+              width:8, 
+              background:'#1e90ff', 
+              cursor:'ew-resize',
+              boxShadow: '0 0 2px rgba(0,0,0,0.3)',
+              zIndex: 10
+            }} 
+            title="Drag to adjust start time"
+          />
+          {/* End handle */}
+          <div 
+            onMouseDown={handleMouseDown('end')}
+            style={{ 
+              position:'absolute', 
+              left: Math.min(width-8, right-4), 
+              top:0, 
+              bottom:0, 
+              width:8, 
+              background:'#1e90ff', 
+              cursor:'ew-resize',
+              boxShadow: '0 0 2px rgba(0,0,0,0.3)',
+              zIndex: 10
+            }} 
+            title="Drag to adjust end time"
+          />
+        </div>
+        <div style={{ fontSize:12, color:'#666' }}>
+          <strong>Start:</strong> {sel.start.toFixed(2)}s | <strong>End:</strong> {sel.end.toFixed(2)}s | <strong>Duration:</strong> {trimmedDuration.toFixed(2)}s
+          {trimmedDuration < sel.duration && <span style={{ color: '#1e90ff', marginLeft: 8 }}>({percentTrimmed}% trimmed)</span>}
+        </div>
+      </div>
+
       {/* Multi-Track Timeline */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, color: '#666', marginBottom: 12, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -202,92 +288,6 @@ export default function Timeline() {
             />
           )
         })}
-      </div>
-
-      {/* Trim Controls for Selected Clip */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>TRIM SELECTED CLIP: {sel.name}</span>
-          <button
-            onClick={() => {
-              const { playhead } = useStore.getState()
-              // Playhead is relative to clip's start
-              const splitTime = sel.start + playhead
-              
-              // Validate split time is within clip bounds
-              if (splitTime <= sel.start || splitTime >= sel.end) {
-                alert('Playhead must be between clip start and end to split')
-                return
-              }
-              
-              if (confirm(`Split "${sel.name}" at ${(splitTime - sel.start).toFixed(2)}s?`)) {
-                useStore.getState().splitClip(sel.id, splitTime)
-              }
-            }}
-            style={{
-              padding: '4px 12px',
-              background: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 'bold'
-            }}
-            title="Split clip at current playhead position"
-          >
-            Split at Playhead
-          </button>
-        </div>
-      </div>
-      <div ref={containerRef} style={{ width, height: 64, position:'relative', background:'#fafafa', border:'1px solid #ddd', margin:'8px 0', userSelect: 'none' }}>
-        {/* Full duration background */}
-        <div style={{ position:'absolute', left: 0, width: '100%', top:0, bottom:0, background:'#f0f0f0' }} />
-        {/* Trimmed out regions (darker) */}
-        {left > 0 && (
-          <div style={{ position:'absolute', left: 0, width: left, top:0, bottom:0, background:'#ddd', opacity: 0.7 }} />
-        )}
-        {right < width && (
-          <div style={{ position:'absolute', left: right, width: width - right, top:0, bottom:0, background:'#ddd', opacity: 0.7 }} />
-        )}
-        {/* Selected range */}
-        <div style={{ position:'absolute', left: left, width: Math.max(2, right-left), top:0, bottom:0, background:'#cde4ff' }} />
-        {/* Start handle */}
-        <div 
-          onMouseDown={handleMouseDown('start')}
-          style={{ 
-            position:'absolute', 
-            left: Math.max(0, left-4), 
-            top:0, 
-            bottom:0, 
-            width:8, 
-            background:'#1e90ff', 
-            cursor:'ew-resize',
-            boxShadow: '0 0 2px rgba(0,0,0,0.3)',
-            zIndex: 10
-          }} 
-          title="Drag to adjust start time"
-        />
-        {/* End handle */}
-        <div 
-          onMouseDown={handleMouseDown('end')}
-          style={{ 
-            position:'absolute', 
-            left: Math.min(width-8, right-4), 
-            top:0, 
-            bottom:0, 
-            width:8, 
-            background:'#1e90ff', 
-            cursor:'ew-resize',
-            boxShadow: '0 0 2px rgba(0,0,0,0.3)',
-            zIndex: 10
-          }} 
-          title="Drag to adjust end time"
-        />
-      </div>
-      <div style={{ fontSize:12, color:'#666' }}>
-        <strong>Start:</strong> {sel.start.toFixed(2)}s | <strong>End:</strong> {sel.end.toFixed(2)}s | <strong>Duration:</strong> {trimmedDuration.toFixed(2)}s
-        {trimmedDuration < sel.duration && <span style={{ color: '#1e90ff', marginLeft: 8 }}>({percentTrimmed}% trimmed)</span>}
       </div>
     </div>
   )
