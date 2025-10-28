@@ -61,6 +61,8 @@ declare global {
       loadProject: (filePath: string) => Promise<{ ok: boolean; state: any }>
       getAutosavePath: () => Promise<string>
       checkAutosave: () => Promise<{ exists: boolean; path?: string }>
+      onMenuSaveProject: (callback: () => void) => void
+      onMenuLoadProject: (callback: () => void) => void
     }
   }
 }

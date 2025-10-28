@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, protocol, Menu } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const ffmpeg = require('fluent-ffmpeg')
@@ -159,6 +159,66 @@ const createWindow = async () => {
   if (isDev) {
     win.webContents.openDevTools()
   }
+  
+  // Create application menu
+  const menuTemplate: any = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Save Project...',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            win?.webContents.send('menu:save-project')
+          }
+        },
+        {
+          label: 'Load Project...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            win?.webContents.send('menu:load-project')
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exit',
+          accelerator: 'CmdOrCtrl+Q',
+          click: () => {
+            app.quit()
+          }
+        }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    }
+  ]
+  
+  const menu = Menu.buildFromTemplate(menuTemplate)
+  Menu.setApplicationMenu(menu)
 }
 
 app.whenReady().then(createWindow)

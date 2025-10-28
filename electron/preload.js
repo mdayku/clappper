@@ -20,5 +20,13 @@ contextBridge.exposeInMainWorld('clappper', {
     saveProject: (filePath, state) => ipcRenderer.invoke('project:save', { filePath, state }),
     loadProject: (filePath) => ipcRenderer.invoke('project:load', filePath),
     getAutosavePath: () => ipcRenderer.invoke('project:autosave-path'),
-    checkAutosave: () => ipcRenderer.invoke('project:check-autosave')
+    checkAutosave: () => ipcRenderer.invoke('project:check-autosave'),
+    onMenuSaveProject: (callback) => {
+        ipcRenderer.removeAllListeners('menu:save-project');
+        ipcRenderer.on('menu:save-project', () => callback());
+    },
+    onMenuLoadProject: (callback) => {
+        ipcRenderer.removeAllListeners('menu:load-project');
+        ipcRenderer.on('menu:load-project', () => callback());
+    }
 });

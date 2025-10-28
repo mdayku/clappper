@@ -13,6 +13,16 @@ export default function Toolbar() {
     if (window.clappper) {
       window.clappper.onExportProgress((p: number) => setProgress(p))
       window.clappper.onTranscodeProgress((p: number) => setTranscodeProgress(p))
+      
+      // Listen for menu events
+      window.clappper.onMenuSaveProject(() => {
+        console.log('Menu: Save Project')
+        saveProject()
+      })
+      window.clappper.onMenuLoadProject(() => {
+        console.log('Menu: Load Project')
+        loadProject()
+      })
     }
   }, [])
 
@@ -339,12 +349,6 @@ export default function Toolbar() {
         </button>
         <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export'}
-        </button>
-        <button onClick={saveProject} disabled={isExporting || isImporting || allClips.length === 0}>
-          Save Project
-        </button>
-        <button onClick={loadProject} disabled={isExporting || isImporting}>
-          Load Project
         </button>
         <button 
           onClick={clearAll} 

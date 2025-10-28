@@ -7,7 +7,7 @@ import { useStore } from './store'
 
 export default function App() {
   const store = useStore()
-  const { playhead, setPlayhead, selectedId, removeClip, splitClip, getTotalDuration } = store
+  const { playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration } = store
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [autosavePath, setAutosavePath] = React.useState<string>('')
   
@@ -99,7 +99,7 @@ export default function App() {
           if (selectedId) {
             e.preventDefault()
             if (confirm('Delete selected clip?')) {
-              removeClip(selectedId)
+              deleteClip(selectedId)
             }
           }
           break
@@ -128,7 +128,7 @@ export default function App() {
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [playhead, setPlayhead, selectedId, removeClip, splitClip, getTotalDuration, isPlaying])
+  }, [playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration, isPlaying])
   
   return (
     <ErrorBoundary>
