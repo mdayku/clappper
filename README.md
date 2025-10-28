@@ -2,7 +2,7 @@
 
 A lightweight desktop video editor for solo creators and educators. Quickly import, trim, reorder, and export video content without the complexity of professional NLEs.
 
-## ✨ Features (Phase 5 Complete!)
+## ✨ Features (Phase 6 Complete!)
 
 ### ✅ Multi-Track Editing
 - **5-track system** - 1 Main track + 4 Overlay tracks
@@ -11,20 +11,21 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Drag between tracks** - Move clips between main and overlay tracks
 - **Configurable overlays** - Show 0-4 overlay tracks via dropdown
 - **Timeline view** - All tracks rendered with scrollable layout
-- **Beautiful thumbnails** - Auto-generated video previews on every clip
-- **Trim controls** - Visual handles for precise in/out points
+- **Trim controls** - Visual handles for precise in/out points (moved to top for visibility)
 - **Split at playhead** - Split any clip into two segments
 - **Delete clips** - Remove unwanted clips with confirmation
 
 ### 🎬 Picture-in-Picture (PiP)
-- **Real-time preview** - See PiP effect live in player
+- **Real-time preview** - See PiP effect live in player (matches export output)
 - **4 simultaneous overlays** - Up to 4 PiP windows at once
+- **Multi-overlay export** - Exports all 4 overlays simultaneously
 - **Free dragging** - Click and drag PiP windows to any position
 - **5 position presets** - Top-left, top-right, bottom-left, bottom-right, center
 - **Adjustable size** - Scale overlays from 15% to 50% of main video
 - **Keyframe animation** - Mark positions at different times for animated movement
 - **Linear interpolation** - Smooth transitions between keyframes
 - **Visual markers** - See keyframes on timeline
+- **Audio fallback** - Uses overlay audio if main video has none
 
 ### 🎬 Playback & Preview
 - **Multi-track playback** - Synchronized main + overlay videos
@@ -32,27 +33,28 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Playhead tracking** - Tracks position across entire sequence
 - **Clip selection** - Click any clip to jump to it
 - **Aspect ratio handling** - Properly displays portrait/landscape videos
+- **Memory safe** - Proper cleanup prevents memory leaks
 
 ### 💾 Export
-- **PiP export** - Exports main video with animated overlay(s)
-- **Multi-clip concatenation** - Exports all clips as one seamless video
+- **Export modal** - Clean UI with resolution and quality options
+- **Multi-overlay export** - Exports all 4 overlay tracks simultaneously
 - **Quality presets** - Choose resolution (360p/480p/720p/1080p/Source)
 - **Encoding speed** - Fast/Medium/Slow presets for size vs speed tradeoff
-- **Save As dialog** - Choose location and filename before export
-- **Progress tracking** - Real-time export progress updates
-- **H.264/AAC output** - Universal MP4 format
+- **Progress modal** - Animated progress bar with percentage (0-100%)
+- **Cancel export** - Stop export mid-process with cleanup
+- **Validation** - Blocks empty timeline and zero-duration clips
+- **Error handling** - Meaningful messages for disk space, permissions, codec issues
+- **H.264/AAC output** - Universal MP4 format (WMP compatible)
 - **Respects trims** - Only exports trimmed portions
-- **FFmpeg filter_complex** - Advanced animated expressions for keyframes
+- **FFmpeg logging** - Detailed console output for debugging
 
 ### 📊 UI/UX
-- **Track badges** - Color-coded track indicators
+- **Track badges** - Color-coded track indicators (purple, blue, green, orange)
 - **Overlay counter** - Shows active overlays in player
 - **Total duration** - Displays sequence length (MM:SS.S)
 - **Scrollable timeline** - Handles many tracks gracefully
 - **Wrapping toolbar** - Responsive button layout
-- **Video thumbnails** - Beautiful preview images on timeline clips
-- **Smart caching** - Thumbnails cached locally for instant loading
-- **Error recovery** - Remove failed clips, dismiss errors
+- **Error recovery** - Dismiss errors, meaningful error messages
 - **Clear All** - Quick reset button
 
 ## 🚀 Quickstart

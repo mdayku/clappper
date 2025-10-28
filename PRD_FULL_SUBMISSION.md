@@ -483,82 +483,45 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 └──────────────────────────┘
 ```
 
-### Phase 6: Polish & Packaging (Priority 5)
+### Phase 6: Polish & Stability ✅ COMPLETE
 **Goal**: Stable, distributable app
 
-**Tasks**:
+**Completed Features**:
 
-**6.0: Additional Format Support**
-- [x] Add .avi to file picker filters (dialog:openFiles) ✅
-- [ ] Test AVI import with various codecs (DivX, Xvid, etc.)
-- [x] AVI files transcode automatically via existing H.264 pipeline ✅
-- [ ] Add format detection and codec warnings for unsupported AVI variants (future enhancement)
+**6.0.5: Multi-Overlay Export** ✅
+- [x] Update `export:pip` to handle multiple overlay clips ✅
+- [x] Chain multiple `scale2ref` and `overlay` filters for each overlay track ✅
+- [x] Automatic positioning in corners (top-left, top-right, bottom-left, bottom-right) ✅
+- [x] Test with 2, 3, and 4 simultaneous overlays ✅
+- [x] Audio fallback: Use overlay audio if main video has no audio ✅
 
-**6.0.5: Multi-Overlay Export**
-- [ ] Update `export:pip` to handle multiple overlay clips (currently only exports first overlay)
-- [ ] Chain multiple `scale2ref` and `overlay` filters for each overlay track
-- [ ] Apply keyframe animations to each overlay independently
-- [ ] Handle audio mixing from multiple sources (use `amix` filter)
-- [ ] Test with 2, 3, and 4 simultaneous overlays
-- [ ] Update progress reporting for multi-overlay exports
-- [ ] Document performance implications (4 overlays = slower export)
+**6.1: Cancelable Exports** ✅
+- [x] Track spawned ffmpeg PID ✅
+- [x] Add Cancel button that kills process ✅
+- [x] Proper cleanup on cancellation ✅
 
-**6.0.6: PiP Length & Resolution Mismatch Handling**
-- [ ] Add UI option in Export Settings for length mismatch behavior:
-  - [ ] Option A: Cut to shortest (current default with `-shortest`)
-  - [ ] Option B: Freeze last frame of shorter video (use `tpad` filter)
-  - [ ] Option C: Loop shorter video (use `loop` filter)
-  - [ ] Option D: Speed adjust to match lengths (use `setpts` filter)
-- [ ] Store preference in Zustand store (`pipLengthMode`)
-- [ ] Update `export:pip` handler to apply selected filter
-- [ ] Add resolution mismatch handling (already handled by scale2ref, but document it)
-- [ ] Test with videos of different aspect ratios (16:9, 9:16, 4:3, 1:1)
+**6.2: Error Handling & Validation** ✅
+- [x] Surface meaningful errors: disk full, permissions, unknown codec ✅
+- [x] Block export on empty timeline ✅
+- [x] Block export on zero-duration clips ✅
+- [x] User-friendly error messages ✅
 
-**6.1: Cancelable Exports + Temp Hygiene**
-- [ ] Track spawned ffmpeg PID
-- [ ] Add Cancel button that kills process and removes partial files
-- [ ] Use dedicated temp dir: `{appData}/Clappper/tmp/`
-- [ ] Auto-clean temp dir on startup/shutdown
-- [ ] Clean up temp files even on error/crash
+**6.3: Memory Safety** ✅
+- [x] Proper video element cleanup when clips change ✅
+- [x] Pause videos on unmount ✅
+- [x] Clear video sources to release resources ✅
 
-**6.2: Error Handling + Actions**
-- [ ] Surface meaningful errors: disk full, permissions, unknown codec
-- [ ] Add actionable buttons: "Open temp folder", "Retry with transcode"
-- [ ] Add error handling for import failures (unsupported codec, corrupt file)
-- [ ] Add error handling for export failures
-- [ ] Show loading spinner during metadata extraction
-- [ ] Block export on empty timeline
-- [ ] Block export on zero-duration clips
+**6.7: FFmpeg Logging** ✅
+- [x] Detailed console logging for all export operations ✅
+- [x] Log filters, inputs, settings, and output paths ✅
+- [x] Helps debug export issues ✅
 
-**6.3: Memory Safety + Performance**
-- [ ] Revoke object URLs when clips change (avoid leaks)
-- [ ] Virtualize Timeline list if clips > 30 (windowing)
-- [ ] Add dynamic player zoom/canvas resizing for low-resolution videos
-
-**6.4: CSP & Security**
-- [ ] Production CSP: remove `'unsafe-inline'`, restrict file:/blob: properly
-- [ ] Dev CSP can stay relaxed
-
-**6.5: Packaging Invariants**
-- [ ] Verify electron-builder extraResources includes ffmpeg-static binary
-- [ ] Windows long paths: use `\\?\` prefix or keep temp paths short
-- [ ] Add preflight check: "ffmpeg present & executable" with friendly error
-- [ ] Test on Windows (NSIS installer)
-- [ ] Test on Mac (DMG)
-- [ ] Add app icon (icon.png → icon.ico / icon.icns)
-
-**6.6: QA Smoke Tests**
-- [ ] Mixed codecs: HEVC → H.264 transcode path
-- [ ] PiP: 1080p main + 720p overlay, different aspect ratios
-- [ ] Long export: 5-8 minutes, cancel + resume
-- [ ] Edge cases: zero-duration trim blocked, empty timeline export blocked
-- [ ] Document in README: "How We Tested"
-
-**6.7: Metrics & Logging**
-- [ ] Track export success rate
-- [ ] Measure median encode speed (x real-time)
-- [ ] Add log file: `{appData}/Clappper/logs/clappper.log`
-- [ ] Log ffmpeg commands and errors for debugging
+**Implementation Notes**:
+- Multi-overlay export uses simplified positioning (no per-overlay keyframes yet)
+- Single overlay retains full keyframe animation support
+- Cancel button appears in export progress modal
+- Memory leaks prevented by proper video element cleanup
+- FFmpeg commands logged to console for debugging
 
 ### Phase 7: Stretch Features (If Time Permits)
 **Goal**: Enhance UX with power-user features
@@ -772,19 +735,55 @@ window.clappper.onEnhanceProgress((data: {
 
 ---
 
-### Phase 9: Filmstrip Thumbnails (Priority: Low, Post-Demo)
-**Goal**: Add cascading thumbnail previews across timeline clips for better visual reference
+### Phase 9: Advanced Features & Polish (Priority: Low, Post-Demo)
+**Goal**: Additional features deferred from earlier phases
 
+**9.1: Filmstrip Thumbnails**
 **Why Deferred**: Single thumbnails in wrong aspect ratio provide little value. Filmstrip thumbnails (multiple frames tiled horizontally) would be much more useful but require additional implementation time.
 
 **Tasks**:
-- [ ] **9.1**: Generate 5-10 thumbnails per clip at evenly spaced intervals
-- [ ] **9.2**: Calculate optimal thumbnail count based on clip width
-- [ ] **9.3**: Tile thumbnails horizontally with CSS background positioning
-- [ ] **9.4**: Add CSP directive for `thumb://` protocol
-- [ ] **9.5**: Implement smart caching (check existing thumbnails before generating)
-- [ ] **9.6**: Add loading states during thumbnail generation
-- [ ] **9.7**: Optimize for performance with many clips
+- [ ] Generate 5-10 thumbnails per clip at evenly spaced intervals
+- [ ] Calculate optimal thumbnail count based on clip width
+- [ ] Tile thumbnails horizontally with CSS background positioning
+- [ ] Add CSP directive for `thumb://` protocol
+- [ ] Implement smart caching (check existing thumbnails before generating)
+- [ ] Add loading states during thumbnail generation
+- [ ] Optimize for performance with many clips
+
+**9.2: PiP Length & Resolution Mismatch Handling** (Deferred from Phase 6)
+- [ ] Add UI option in Export Settings for length mismatch behavior:
+  - [ ] Option A: Cut to shortest (current default with `-shortest`)
+  - [ ] Option B: Freeze last frame of shorter video (use `tpad` filter)
+  - [ ] Option C: Loop shorter video (use `loop` filter)
+  - [ ] Option D: Speed adjust to match lengths (use `setpts` filter)
+- [ ] Store preference in Zustand store (`pipLengthMode`)
+- [ ] Update `export:pip` handler to apply selected filter
+- [ ] Test with videos of different aspect ratios (16:9, 9:16, 4:3, 1:1)
+
+**9.3: Advanced Export Features** (Deferred from Phase 6)
+- [ ] Use dedicated temp dir: `{appData}/Clappper/tmp/`
+- [ ] Auto-clean temp dir on startup/shutdown
+- [ ] Clean up temp files even on error/crash
+- [ ] Add actionable buttons: "Open temp folder", "Retry with transcode"
+- [ ] Show loading spinner during metadata extraction
+
+**9.4: Performance Optimizations** (Deferred from Phase 6)
+- [ ] Virtualize Timeline list if clips > 30 (windowing)
+- [ ] Add dynamic player zoom/canvas resizing for low-resolution videos
+- [ ] Per-overlay keyframe animations in multi-overlay export
+- [ ] Audio mixing from multiple overlay sources (use `amix` filter)
+
+**9.5: Packaging & QA** (Deferred from Phase 6)
+- [ ] Test AVI import with various codecs (DivX, Xvid, etc.)
+- [ ] Add format detection and codec warnings for unsupported AVI variants
+- [ ] Production CSP: remove `'unsafe-inline'`, restrict file:/blob: properly
+- [ ] Windows long paths: use `\\?\` prefix or keep temp paths short
+- [ ] Add preflight check: "ffmpeg present & executable" with friendly error
+- [ ] Test on Mac (DMG)
+- [ ] Add app icon (icon.png → icon.ico / icon.icns)
+- [ ] QA smoke tests: Mixed codecs, long exports, edge cases
+- [ ] Track export success rate and median encode speed
+- [ ] Add log file: `{appData}/Clappper/logs/clappper.log`
 
 **Technical Approach**:
 ```typescript
@@ -812,17 +811,17 @@ background: url(thumb://path1) 0% 0% / 20% 100%,
 
 ## Implementation Timeline
 
-### Day 1 (Today): Core Features
-- **Hours 0-4**: Phase 2 (Multi-clip timeline with reorder/split/delete)
-- **Hours 4-8**: Phase 3 (Two-track system)
-- **Hours 8-10**: Phase 4 (Thumbnails)
-- **Hours 10-12**: Testing & bug fixes
+### ✅ Completed Phases:
+- **Phase 1**: Basic video import & playback ✅
+- **Phase 2**: Multi-clip timeline (reorder, split, delete) ✅
+- **Phase 3**: Multi-track PiP with keyframe animation ✅
+- **Phase 5**: Export presets with modal UI ✅
+- **Phase 6**: Polish & stability (multi-overlay, cancel, error handling, memory safety, logging) ✅
 
-### Day 2 (Tomorrow): Polish & Ship
-- **Hours 0-2**: Phase 5 (Export presets)
-- **Hours 2-6**: Phase 6 (Error handling, packaging, testing)
-- **Hours 6-8**: Phase 7 (Stretch goals if ahead of schedule)
-- **Hours 8-10**: Final testing, documentation, submission prep
+### 🔄 Next Up:
+- **Phase 7**: Keyboard shortcuts, autosave, project persistence
+- **Phase 8**: AI Super-Resolution (stretch goal)
+- **Phase 9**: Advanced features & polish (deferred items)
 
 ---
 

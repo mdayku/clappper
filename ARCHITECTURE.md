@@ -344,50 +344,62 @@ ffprobe -v quiet \
 4. **Export**: Stream processing (no loading full videos into memory)
 5. **Temp Files**: Auto-cleanup after export
 
-## Current Features (Phase 3 Complete!)
+## Current Features (Phase 6 Complete!)
 
 ✅ **Multi-Track System**
 - 1 Main track + 4 Overlay tracks
 - Drag-and-drop between all tracks
 - Configurable overlay track visibility (0-4)
-- Color-coded track badges
+- Color-coded track badges (purple, blue, green, orange)
+- Scrollable timeline for many tracks
 
 ✅ **Advanced PiP System**
-- Real-time PiP preview with synchronized playback
+- Real-time PiP preview with synchronized playback (matches export)
 - Free dragging of PiP windows
 - 5 position presets + custom positioning
 - Adjustable size (15-50%)
 - Keyframe animation system
 - Interpolated movement between keyframes
 - Visual keyframe markers
+- Multi-overlay export (up to 4 simultaneous PiPs)
+- Audio fallback to overlay if main has no audio
 
 ✅ **Export Pipeline**
+- Export modal with resolution and quality options
 - Single clip trim
 - Multi-clip concatenation
-- PiP overlay with animated position/size
+- Multi-overlay PiP with animated position/size
 - FFmpeg filter_complex expressions
-- Progress tracking
+- Progress modal with animated bar (0-100%)
+- Cancel export with cleanup
+- Validation (blocks empty timeline, zero-duration clips)
+- Error handling (disk space, permissions, codec issues)
+- FFmpeg logging for debugging
 
 ✅ **Format Support**
 - MP4, MOV, WebM, MKV, AVI
 - Auto-transcode H.265/HEVC → H.264
 - Codec detection and normalization
+- WMP compatibility (yuv420p format)
+
+✅ **Memory & Performance**
+- Proper video element cleanup
+- No memory leaks
+- Efficient resource management
 
 ## Known Limitations
 
-- No project persistence (clips cleared on refresh)
-- No undo/redo
-- No keyboard shortcuts
-- No thumbnails on timeline
-- Multi-overlay export (only first overlay currently)
-- Export progress doesn't show during segment trimming
+- No project persistence (clips cleared on refresh) - **Phase 7**
+- No undo/redo - **Phase 7**
+- No keyboard shortcuts - **Phase 7**
+- No filmstrip thumbnails - **Phase 9**
+- Per-overlay keyframes not yet supported (multi-overlay uses auto-positioning)
+- Length/resolution mismatch handling - **Phase 9**
 
 ## Future Enhancements
 
 See [`PRD_FULL_SUBMISSION.md`](./PRD_FULL_SUBMISSION.md) for detailed roadmap:
-- **Phase 4:** Thumbnails
-- **Phase 5:** Export presets (resolution/quality)
-- **Phase 6:** Polish & packaging
-- **Phase 7:** Keyboard shortcuts, undo/redo
+- **Phase 7:** Keyboard shortcuts, autosave, project persistence
 - **Phase 8:** AI video enhancement (Real-ESRGAN)
+- **Phase 9:** Advanced features & polish (deferred items)
 
