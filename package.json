@@ -53,7 +53,8 @@
       "category": "public.app-category.video"
     },
     "win": { 
-      "target": "nsis"
+      "target": "nsis",
+      "signAndEditExecutable": false
     },
     "linux": { 
       "target": "AppImage" 

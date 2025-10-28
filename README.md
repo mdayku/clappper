@@ -64,10 +64,14 @@ Electron opens after Vite dev server starts (port 5173-5177).
 
 ```bash
 npm run build        # Build Vite + Electron
-npm run dist         # Package for distribution (Windows NSIS / Mac DMG)
+npm run pack         # Package unpacked app (dist/win-unpacked/)
+npm run dist         # Create installer (Windows NSIS / Mac DMG / Linux AppImage)
 ```
 
-Artifacts: `dist/` (Vite), `release/` (electron-builder)
+**Installer**: `dist/clappper Setup 0.1.0.exe` (201 MB)
+**Unpacked**: `dist/win-unpacked/clappper.exe`
+
+The installer includes FFmpeg and all dependencies - no external installs required.
 
 ## 🛠️ Tech Stack
 
