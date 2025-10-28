@@ -63,6 +63,8 @@ declare global {
       checkAutosave: () => Promise<{ exists: boolean; path?: string }>
       onMenuSaveProject: (callback: () => void) => void
       onMenuLoadProject: (callback: () => void) => void
+      getScreenSources: () => Promise<Array<{ id: string; name: string; thumbnail: string }>>
+      saveRecording: (filePath: string, base64Data: string) => Promise<{ ok: boolean }>
     }
   }
 }

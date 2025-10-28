@@ -9,6 +9,14 @@ export interface ExportSettings {
   preset: ExportPreset
 }
 
+// History snapshot for undo/redo
+interface HistorySnapshot {
+  tracks: Track[]
+  selectedId?: string
+  pipSettings: PipSettings
+  visibleOverlayCount: number
+}
+
 interface State {
   tracks: Track[]
   selectedId?: string
@@ -16,6 +24,13 @@ interface State {
   pipSettings: PipSettings
   visibleOverlayCount: number // How many overlay tracks to show (0-4)
   exportSettings: ExportSettings
+  
+  // Undo/Redo
+  history: HistorySnapshot[]
+  historyIndex: number
+  undo: () => void
+  redo: () => void
+  pushHistory: () => void
   
   // Track operations
   getTrack: (trackId: string) => Track | undefined
@@ -97,6 +112,72 @@ const createDefaultTracks = (): Track[] => [
 export const useStore = create<State>((set, get) => ({
   tracks: createDefaultTracks(),
   playhead: 0,
+  
+  // Undo/Redo state
+  history: [],
+  historyIndex: -1,
+  
+  // Create a snapshot of current state
+  pushHistory: () => set(s => {
+    const snapshot: HistorySnapshot = {
+      tracks: JSON.parse(JSON.stringify(s.tracks)), // Deep clone
+      selectedId: s.selectedId,
+      pipSettings: JSON.parse(JSON.stringify(s.pipSettings)),
+      visibleOverlayCount: s.visibleOverlayCount
+    }
+    
+    // Remove any future history if we're not at the end
+    const newHistory = s.history.slice(0, s.historyIndex + 1)
+    newHistory.push(snapshot)
+    
+    // Limit history to 50 snapshots
+    if (newHistory.length > 50) {
+      newHistory.shift()
+      return { history: newHistory, historyIndex: newHistory.length - 1 }
+    }
+    
+    return { history: newHistory, historyIndex: newHistory.length - 1 }
+  }),
+  
+  // Undo to previous state
+  undo: () => set(s => {
+    if (s.historyIndex <= 0) {
+      console.log('Nothing to undo')
+      return s
+    }
+    
+    const newIndex = s.historyIndex - 1
+    const snapshot = s.history[newIndex]
+    
+    console.log('Undo to index', newIndex)
+    return {
+      tracks: JSON.parse(JSON.stringify(snapshot.tracks)),
+      selectedId: snapshot.selectedId,
+      pipSettings: JSON.parse(JSON.stringify(snapshot.pipSettings)),
+      visibleOverlayCount: snapshot.visibleOverlayCount,
+      historyIndex: newIndex
+    }
+  }),
+  
+  // Redo to next state
+  redo: () => set(s => {
+    if (s.historyIndex >= s.history.length - 1) {
+      console.log('Nothing to redo')
+      return s
+    }
+    
+    const newIndex = s.historyIndex + 1
+    const snapshot = s.history[newIndex]
+    
+    console.log('Redo to index', newIndex)
+    return {
+      tracks: JSON.parse(JSON.stringify(snapshot.tracks)),
+      selectedId: snapshot.selectedId,
+      pipSettings: JSON.parse(JSON.stringify(snapshot.pipSettings)),
+      visibleOverlayCount: snapshot.visibleOverlayCount,
+      historyIndex: newIndex
+    }
+  }),
   visibleOverlayCount: 4, // Show all 4 by default
   pipSettings: {
     position: 'bottom-right',
@@ -117,69 +198,81 @@ export const useStore = create<State>((set, get) => ({
   getOverlayTracks: () => get().tracks.filter(t => t.type === 'overlay'),
   
   // Clip operations
-  setClips: (c) => set(s => ({
-    tracks: s.tracks.map(track => 
-      track.id === 'main' 
-        ? { ...track, clips: sortClips(c.map(clip => ({ ...clip, trackId: 'main' }))) }
-        : track
-    )
-  })),
-  
-  addClips: (c, trackId = 'main') => set(s => {
-    const tracks = s.tracks.map(track => {
-      if (track.id !== trackId) return track
-      
-      const maxOrder = track.clips.length > 0 ? Math.max(...track.clips.map(cl => cl.order)) : -1
-      const newClips = c.map((clip, i) => ({ 
-        ...clip, 
-        order: maxOrder + 1 + i,
-        trackId: track.id
-      }))
-      
-      return { ...track, clips: sortClips([...track.clips, ...newClips]) }
-    })
-    
-    // Auto-select first clip if nothing selected
-    const allClips = tracks.flatMap(t => t.clips)
-    const selectedId = s.selectedId || (allClips.length > 0 ? allClips[0].id : undefined)
-    
-    return { tracks, selectedId }
-  }),
-  
-  setTrim: (id, start, end) => set(s => ({
-    tracks: s.tracks.map(track => ({
-      ...track,
-      clips: track.clips.map(cl => cl.id === id ? { ...cl, start, end } : cl)
+  setClips: (c) => {
+    get().pushHistory() // Save state before change
+    set(s => ({
+      tracks: s.tracks.map(track => 
+        track.id === 'main' 
+          ? { ...track, clips: sortClips(c.map(clip => ({ ...clip, trackId: 'main' }))) }
+          : track
+      )
     }))
-  })),
+  },
   
-  moveClipToTrack: (clipId, targetTrackId) => set(s => {
-    let clipToMove: Clip | undefined
-    
-    // Remove from source track
-    const tracks = s.tracks.map(track => {
-      const clip = track.clips.find(c => c.id === clipId)
-      if (clip) {
-        clipToMove = clip
-        return { ...track, clips: track.clips.filter(c => c.id !== clipId) }
-      }
-      return track
-    })
-    
-    // Add to target track
-    if (!clipToMove) return s
-    
-    return {
-      tracks: tracks.map(track => {
-        if (track.id !== targetTrackId) return track
+  addClips: (c, trackId = 'main') => {
+    get().pushHistory() // Save state before change
+    set(s => {
+      const tracks = s.tracks.map(track => {
+        if (track.id !== trackId) return track
         
         const maxOrder = track.clips.length > 0 ? Math.max(...track.clips.map(cl => cl.order)) : -1
-        const newClip = { ...clipToMove!, order: maxOrder + 1, trackId: track.id }
+        const newClips = c.map((clip, i) => ({ 
+          ...clip, 
+          order: maxOrder + 1 + i,
+          trackId: track.id
+        }))
         
-        return { ...track, clips: sortClips([...track.clips, newClip]) }
+        return { ...track, clips: sortClips([...track.clips, ...newClips]) }
       })
-    }
-  }),
+      
+      // Auto-select first clip if nothing selected
+      const allClips = tracks.flatMap(t => t.clips)
+      const selectedId = s.selectedId || (allClips.length > 0 ? allClips[0].id : undefined)
+      
+      return { tracks, selectedId }
+    })
+  },
+  
+  setTrim: (id, start, end) => {
+    get().pushHistory() // Save state before change
+    set(s => ({
+      tracks: s.tracks.map(track => ({
+        ...track,
+        clips: track.clips.map(cl => cl.id === id ? { ...cl, start, end } : cl)
+      }))
+    }))
+  },
+  
+  moveClipToTrack: (clipId, targetTrackId) => {
+    get().pushHistory() // Save state before change
+    set(s => {
+      let clipToMove: Clip | undefined
+      
+      // Remove from source track
+      const tracks = s.tracks.map(track => {
+        const clip = track.clips.find(c => c.id === clipId)
+        if (clip) {
+          clipToMove = clip
+          return { ...track, clips: track.clips.filter(c => c.id !== clipId) }
+        }
+        return track
+      })
+      
+      // Add to target track
+      if (!clipToMove) return s
+      
+      return {
+        tracks: tracks.map(track => {
+          if (track.id !== targetTrackId) return track
+          
+          const maxOrder = track.clips.length > 0 ? Math.max(...track.clips.map(cl => cl.order)) : -1
+          const newClip = { ...clipToMove!, order: maxOrder + 1, trackId: track.id }
+          
+          return { ...track, clips: sortClips([...track.clips, newClip]) }
+        })
+      }
+    })
+  },
   
   setPlayhead: (t) => set({ playhead: t }),
   select: (id) => set({ selectedId: id }),
@@ -191,19 +284,24 @@ export const useStore = create<State>((set, get) => ({
   })),
   setVisibleOverlayCount: (count) => set({ visibleOverlayCount: Math.max(0, Math.min(4, count)) }),
   
-  reorderClips: (fromIndex, toIndex, trackId) => set(s => ({
-    tracks: s.tracks.map(track => {
-      if (track.id !== trackId) return track
-      
-      const sorted = sortClips(track.clips)
-      const [removed] = sorted.splice(fromIndex, 1)
-      sorted.splice(toIndex, 0, removed)
-      
-      return { ...track, clips: reassignOrders(sorted) }
-    })
-  })),
+  reorderClips: (fromIndex, toIndex, trackId) => {
+    get().pushHistory() // Save state before change
+    set(s => ({
+      tracks: s.tracks.map(track => {
+        if (track.id !== trackId) return track
+        
+        const sorted = sortClips(track.clips)
+        const [removed] = sorted.splice(fromIndex, 1)
+        sorted.splice(toIndex, 0, removed)
+        
+        return { ...track, clips: reassignOrders(sorted) }
+      })
+    }))
+  },
   
-  splitClip: (id, splitTime) => set(s => {
+  splitClip: (id, splitTime) => {
+    get().pushHistory() // Save state before change
+    set(s => {
     let updated = false
     
     const tracks = s.tracks.map(track => {
@@ -248,15 +346,19 @@ export const useStore = create<State>((set, get) => ({
     })
     
     return updated ? { tracks } : s
-  }),
+    })
+  },
   
-  deleteClip: (id) => set(s => ({
-    tracks: s.tracks.map(track => ({
-      ...track,
-      clips: reassignOrders(track.clips.filter(c => c.id !== id))
-    })),
-    selectedId: s.selectedId === id ? undefined : s.selectedId
-  })),
+  deleteClip: (id) => {
+    get().pushHistory() // Save state before change
+    set(s => ({
+      tracks: s.tracks.map(track => ({
+        ...track,
+        clips: reassignOrders(track.clips.filter(c => c.id !== id))
+      })),
+      selectedId: s.selectedId === id ? undefined : s.selectedId
+    }))
+  },
   
   // Helper methods (backward compatible)
   getClipsSorted: () => {

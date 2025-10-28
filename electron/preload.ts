@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld('clappper', {
   onMenuLoadProject: (callback: () => void) => {
     ipcRenderer.removeAllListeners('menu:load-project')
     ipcRenderer.on('menu:load-project', () => callback())
-  }
+  },
+  getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
+  saveRecording: (filePath: string, base64Data: string) => 
+    ipcRenderer.invoke('screen:save-recording', { filePath, base64Data })
 })
 

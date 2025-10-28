@@ -7,7 +7,7 @@ import { useStore } from './store'
 
 export default function App() {
   const store = useStore()
-  const { playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration } = store
+  const { playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration, undo, redo } = store
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [autosavePath, setAutosavePath] = React.useState<string>('')
   
@@ -87,6 +87,20 @@ export default function App() {
       
       const totalDuration = getTotalDuration()
       
+      // Undo/Redo (check first to handle Ctrl+Z and Ctrl+Shift+Z)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        redo()
+        console.log('Redo')
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        undo()
+        console.log('Undo')
+        return
+      }
+      
       switch (e.key.toLowerCase()) {
         case ' ': // Space: Play/pause
           e.preventDefault()
@@ -128,7 +142,7 @@ export default function App() {
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration, isPlaying])
+  }, [playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration, isPlaying, undo, redo])
   
   return (
     <ErrorBoundary>

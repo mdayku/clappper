@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useStore } from '../store'
+import ScreenRecorder from './ScreenRecorder'
 
 export default function Toolbar() {
   const [progress, setProgress] = useState(0)
@@ -347,6 +348,7 @@ export default function Toolbar() {
         <button onClick={onImport} disabled={isExporting || isImporting}>
           {isImporting ? 'Importing...' : 'Import'}
         </button>
+        <ScreenRecorder />
         <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export'}
         </button>

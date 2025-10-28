@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, protocol, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, protocol, Menu, desktopCapturer } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const ffmpeg = require('fluent-ffmpeg')
@@ -65,6 +65,37 @@ ipcMain.handle('project:check-autosave', async () => {
     return { exists: true, path: autosavePath }
   } catch {
     return { exists: false }
+  }
+})
+
+// Screen recording handlers
+ipcMain.handle('screen:get-sources', async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ['window', 'screen'],
+    thumbnailSize: { width: 150, height: 150 }
+  })
+  
+  return sources.map(source => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail.toDataURL()
+  }))
+})
+
+ipcMain.handle('screen:save-recording', async (_e: any, args: { filePath: string; base64Data: string }) => {
+  const { filePath, base64Data } = args
+  try {
+    // Remove data URL prefix (data:video/webm;base64,)
+    const base64 = base64Data.split(',')[1]
+    const buffer = Buffer.from(base64, 'base64')
+    
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.promises.writeFile(filePath, buffer)
+    
+    return { ok: true }
+  } catch (err) {
+    console.error('Save recording failed:', err)
+    throw err
   }
 })
 
