@@ -69,7 +69,7 @@ ipcMain.handle('screen:get-sources', async () => {
         types: ['window', 'screen'],
         thumbnailSize: { width: 150, height: 150 }
     });
-    return sources.map(source => ({
+    return sources.map((source) => ({
         id: source.id,
         name: source.name,
         thumbnail: source.thumbnail.toDataURL()
@@ -145,6 +145,17 @@ const createWindow = async () => {
         const url = request.url.substring('thumb://'.length);
         const decodedPath = decodeURIComponent(url);
         callback({ path: decodedPath });
+    });
+    // Set CSP to allow data: URLs for screen capture thumbnails
+    win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': [
+                    "default-src 'self' 'unsafe-inline'; img-src 'self' blob: file: app: media: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+                ]
+            }
+        });
     });
     // In dev mode, connect to Vite server (check multiple ports)
     if (isDev) {

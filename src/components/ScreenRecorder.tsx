@@ -231,18 +231,19 @@ export default function ScreenRecorder() {
           try {
             await window.clappper.saveRecording(savePath, base64data)
             
-            // Add to timeline
-            const clip = {
-              id: crypto.randomUUID(),
-              name: 'Multi-Source Recording',
-              path: savePath,
-              start: 0,
-              end: 0, // Will be set after transcoding
-              order: 0,
-              trackId: 'main'
-            }
-            
-            addClips([clip])
+              // Add to timeline
+              const clip = {
+                id: crypto.randomUUID(),
+                name: 'Multi-Source Recording',
+                path: savePath,
+                start: 0,
+                end: 0, // Will be set after transcoding
+                duration: 0, // Will be set after transcoding
+                order: 0,
+                trackId: 'main'
+              }
+              
+              addClips([clip])
             alert(`Recording saved to:\n${savePath}`)
             cleanup()
             setIsOpen(false)
