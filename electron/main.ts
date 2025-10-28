@@ -151,6 +151,18 @@ const createWindow = async () => {
     }
   })
   
+  // Set CSP for both dev and production
+  win.webContents.session.webRequest.onHeadersReceived((details: any, callback: any) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' blob: file: app: media: data: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+        ]
+      }
+    })
+  })
+  
   // Allow media:// and thumb:// protocols in the renderer
   win.webContents.session.protocol.registerFileProtocol('media', (request: any, callback: any) => {
     const url = request.url.substring('media://'.length)
@@ -162,18 +174,6 @@ const createWindow = async () => {
     const url = request.url.substring('thumb://'.length)
     const decodedPath = decodeURIComponent(url)
     callback({ path: decodedPath })
-  })
-  
-  // Set CSP to allow data: URLs for screen capture thumbnails
-  win.webContents.session.webRequest.onHeadersReceived((details: any, callback: any) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline'; img-src 'self' blob: file: app: media: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-        ]
-      }
-    })
   })
 
   // In dev mode, connect to Vite server (check multiple ports)
