@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('clappper', {
   onTranscodeProgress: (cb: (pct: number) => void) => {
     ipcRenderer.removeAllListeners('transcode:progress')
     ipcRenderer.on('transcode:progress', (_e: any, pct: number) => cb(pct))
-  }
+  },
+  cancelExport: () => ipcRenderer.invoke('export:cancel')
 })
 

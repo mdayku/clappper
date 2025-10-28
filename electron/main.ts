@@ -17,6 +17,19 @@ const getFfmpegPath = () => {
 
 ffmpeg.setFfmpegPath(getFfmpegPath())
 
+// Track current export command for cancellation
+let currentExportCommand: any = null
+
+// Cancel export handler
+ipcMain.handle('export:cancel', async () => {
+  if (currentExportCommand) {
+    currentExportCommand.kill('SIGKILL')
+    currentExportCommand = null
+    return { ok: true, cancelled: true }
+  }
+  return { ok: false, message: 'No export in progress' }
+})
+
 // Helper functions for export quality settings
 const getResolutionFilter = (resolution: string): string | null => {
   switch (resolution) {
@@ -205,6 +218,13 @@ ipcMain.handle('export:trim', async (_e: any, args: { input: string; outPath: st
   const resFilter = getResolutionFilter(resolution)
   const { preset: ffmpegPreset, crf } = getPresetOptions(preset)
   
+  console.log('=== Trim Export ===')
+  console.log('Input:', input)
+  console.log('Trim:', start, 'to', end, `(${(end - start).toFixed(2)}s)`)
+  console.log('Resolution:', resolution, '| Preset:', preset)
+  console.log('Output:', outPath)
+  console.log('===================')
+  
   return new Promise((resolve, reject) => {
     const cmd = ffmpeg(input)
       .setStartTime(start)
@@ -225,9 +245,17 @@ ipcMain.handle('export:trim', async (_e: any, args: { input: string; outPath: st
           win.webContents.send('export:progress', progress)
         }
       })
-      .on('end', () => resolve({ ok: true, outPath }))
-      .on('error', (err: any) => reject(err))
-      .run()
+      .on('end', () => {
+        currentExportCommand = null
+        resolve({ ok: true, outPath })
+      })
+      .on('error', (err: any) => {
+        currentExportCommand = null
+        reject(err)
+      })
+    
+    currentExportCommand = cmd
+    cmd.run()
   })
 })
 
@@ -237,6 +265,15 @@ ipcMain.handle('export:concat', async (_e: any, args: { clips: Array<{input: str
   
   const resFilter = getResolutionFilter(resolution)
   const { preset: ffmpegPreset, crf } = getPresetOptions(preset)
+  
+  console.log('=== Concat Export ===')
+  console.log(`Concatenating ${clipSegments.length} clips`)
+  clipSegments.forEach((clip, i) => {
+    console.log(`  ${i + 1}. ${clip.input} (${clip.start}s - ${clip.end}s)`)
+  })
+  console.log('Resolution:', resolution, '| Preset:', preset)
+  console.log('Output:', outPath)
+  console.log('=====================')
   
   // Create temp directory for intermediate files
   const tempDir = path.join(path.dirname(outPath), '.clappper_temp_' + Date.now())
@@ -279,7 +316,7 @@ ipcMain.handle('export:concat', async (_e: any, args: { clips: Array<{input: str
     
     // Step 3: Concatenate all segments
     await new Promise((resolve, reject) => {
-      ffmpeg()
+      const cmd = ffmpeg()
         .input(concatListPath)
         .inputOptions(['-f', 'concat', '-safe', '0'])
         .outputOptions(['-c', 'copy'])
@@ -290,9 +327,17 @@ ipcMain.handle('export:concat', async (_e: any, args: { clips: Array<{input: str
             win.webContents.send('export:progress', progress)
           }
         })
-        .on('end', () => resolve(null))
-        .on('error', (err: any) => reject(err))
-        .run()
+        .on('end', () => {
+          currentExportCommand = null
+          resolve(null)
+        })
+        .on('error', (err: any) => {
+          currentExportCommand = null
+          reject(err)
+        })
+      
+      currentExportCommand = cmd
+      cmd.run()
     })
     
     // Step 4: Cleanup temp files
@@ -310,10 +355,10 @@ ipcMain.handle('export:concat', async (_e: any, args: { clips: Array<{input: str
   }
 })
 
-// Export with Picture-in-Picture overlay
+// Export with Picture-in-Picture overlay(s)
 ipcMain.handle('export:pip', async (_e: any, args: { 
   mainClip: {input: string; start: number; end: number}; 
-  overlayClip: {input: string; start: number; end: number};
+  overlayClips: Array<{input: string; start: number; end: number}>;
   outPath: string;
   pipPosition: string;
   pipSize: number;
@@ -323,83 +368,138 @@ ipcMain.handle('export:pip', async (_e: any, args: {
   resolution?: string;
   preset?: string;
 }) => {
-  const { mainClip, overlayClip, outPath, pipPosition, pipSize, keyframes, customX, customY, resolution = '1080p', preset = 'medium' } = args
+  const { mainClip, overlayClips, outPath, pipPosition, pipSize, keyframes, customX, customY, resolution = '1080p', preset = 'medium' } = args
+  
+  if (overlayClips.length === 0) {
+    throw new Error('No overlay clips provided')
+  }
   await fs.promises.mkdir(path.dirname(outPath), { recursive: true })
   
   const resFilter = getResolutionFilter(resolution)
   const { preset: ffmpegPreset, crf } = getPresetOptions(preset)
   
+  // For multi-overlay, we'll use simplified positioning (no keyframes for now)
+  // TODO: Support keyframes per overlay in future
+  const useSimplePositioning = overlayClips.length > 1
+  
   let overlayX = ''
   let overlayY = ''
-  // We need to pass main video dimensions to the scale filter
-  // Use scale2ref to scale overlay relative to main video dimensions
-  // scale2ref scales [1] based on [0]'s dimensions and outputs [scaled][ref]
-  let scaleFilter = `[1:v][0:v]scale2ref='oh*mdar':'ih*${pipSize}'[pip][ref]`
+  let scaleFilter = ''
   
-  // If we have keyframes, generate animated position/size
-  if (keyframes && keyframes.length > 0) {
-    // Build expression for animated X position
-    const xExpr = buildKeyframeExpression(keyframes, 'x', 'W', 'w')
-    const yExpr = buildKeyframeExpression(keyframes, 'y', 'H', 'h')
-    const sizeExpr = buildKeyframeSizeExpression(keyframes)
-    
-    overlayX = xExpr
-    overlayY = yExpr
-    scaleFilter = `[1:v][0:v]scale2ref='oh*mdar':'ih*${sizeExpr}'[pip][ref]`
-  } else if (pipPosition === 'custom' && customX !== undefined && customY !== undefined) {
-    // Use custom position (percentage to pixels)
-    overlayX = `W*${customX}`
-    overlayY = `H*${customY}`
-  } else {
-    // Use preset positions
-    const padding = 16
-    
-    switch (pipPosition) {
-      case 'top-left':
-        overlayX = `${padding}`
-        overlayY = `${padding}`
-        break
-      case 'top-right':
-        overlayX = `W-w-${padding}`
-        overlayY = `${padding}`
-        break
-      case 'bottom-left':
-        overlayX = `${padding}`
-        overlayY = `H-h-${padding}`
-        break
-      case 'center':
-        overlayX = '(W-w)/2'
-        overlayY = '(H-h)/2'
-        break
-      default: // bottom-right
-        overlayX = `W-w-${padding}`
-        overlayY = `H-h-${padding}`
+  if (!useSimplePositioning) {
+    // Single overlay with full keyframe support
+    // Use scale2ref to scale overlay relative to main video dimensions
+    // scale2ref scales [1] based on [0]'s dimensions and outputs [scaled][ref]
+    scaleFilter = `[1:v][0:v]scale2ref='oh*mdar':'ih*${pipSize}'[pip][ref]`
+  }
+  
+  // Single overlay: support keyframes and custom positioning
+  if (!useSimplePositioning) {
+    if (keyframes && keyframes.length > 0) {
+      // Build expression for animated X position
+      const xExpr = buildKeyframeExpression(keyframes, 'x', 'W', 'w')
+      const yExpr = buildKeyframeExpression(keyframes, 'y', 'H', 'h')
+      const sizeExpr = buildKeyframeSizeExpression(keyframes)
+      
+      overlayX = xExpr
+      overlayY = yExpr
+      scaleFilter = `[1:v][0:v]scale2ref='oh*mdar':'ih*${sizeExpr}'[pip][ref]`
+    } else if (pipPosition === 'custom' && customX !== undefined && customY !== undefined) {
+      // Use custom position (percentage to pixels)
+      overlayX = `W*${customX}`
+      overlayY = `H*${customY}`
+    } else {
+      // Use preset positions
+      const padding = 16
+      
+      switch (pipPosition) {
+        case 'top-left':
+          overlayX = `${padding}`
+          overlayY = `${padding}`
+          break
+        case 'top-right':
+          overlayX = `W-w-${padding}`
+          overlayY = `${padding}`
+          break
+        case 'bottom-left':
+          overlayX = `${padding}`
+          overlayY = `H-h-${padding}`
+          break
+        case 'center':
+          overlayX = '(W-w)/2'
+          overlayY = '(H-h)/2'
+          break
+        default: // bottom-right
+          overlayX = `W-w-${padding}`
+          overlayY = `H-h-${padding}`
+      }
     }
   }
   
   return new Promise((resolve, reject) => {
     const cmd = ffmpeg()
-      // Main video input
+      // Main video input (input 0)
       .input(mainClip.input)
       .inputOptions(['-ss', mainClip.start.toString()])
       .inputOptions(['-t', (mainClip.end - mainClip.start).toString()])
-      
-      // Overlay video input
-      .input(overlayClip.input)
-      .inputOptions(['-ss', overlayClip.start.toString()])
-      .inputOptions(['-t', (overlayClip.end - overlayClip.start).toString()])
+    
+    // Add all overlay inputs (inputs 1, 2, 3, ...)
+    overlayClips.forEach((overlayClip) => {
+      cmd.input(overlayClip.input)
+        .inputOptions(['-ss', overlayClip.start.toString()])
+        .inputOptions(['-t', (overlayClip.end - overlayClip.start).toString()])
+    })
     
     // Build complex filter with resolution scaling and format normalization
-    const filters = [
-      `[0:v]${resFilter}[main]`, // Scale/normalize main video
-      scaleFilter.replace('[0:v]', '[main]'), // Scale overlay relative to main (replace input with processed main)
-      `[ref][pip]overlay=${overlayX}:${overlayY}:eval=frame[v]` // Overlay (ref is the main video output from scale2ref)
-    ]
+    let filters: string[] = []
     
-    console.log('PiP Export Filters:', filters)
-    console.log('Main clip:', mainClip)
-    console.log('Overlay clip:', overlayClip)
-    console.log('PiP settings:', { pipPosition, pipSize, overlayX, overlayY })
+    if (useSimplePositioning) {
+      // Multi-overlay: chain overlays with automatic positioning
+      filters.push(`[0:v]${resFilter}[base0]`) // Scale/normalize main video
+      
+      // Position overlays in corners with slight offset
+      const positions = [
+        { x: 16, y: 16 }, // top-left
+        { x: 'W-w-16', y: 16 }, // top-right
+        { x: 16, y: 'H-h-16' }, // bottom-left
+        { x: 'W-w-16', y: 'H-h-16' } // bottom-right
+      ]
+      
+      overlayClips.forEach((_, index) => {
+        const inputIdx = index + 1 // overlay inputs start at 1
+        const baseLabel = index === 0 ? 'base0' : `base${index}`
+        const outLabel = index === overlayClips.length - 1 ? 'v' : `base${index + 1}`
+        const pipLabel = `pip${index}`
+        const refLabel = `ref${index}`
+        const pos = positions[index % 4]
+        
+        // Scale overlay relative to current base
+        filters.push(`[${inputIdx}:v][${baseLabel}]scale2ref='oh*mdar':'ih*${pipSize}'[${pipLabel}][${refLabel}]`)
+        // Overlay on base
+        filters.push(`[${refLabel}][${pipLabel}]overlay=${pos.x}:${pos.y}:eval=frame[${outLabel}]`)
+      })
+      
+      console.log('=== Multi-PiP Export ===')
+      console.log(`Exporting ${overlayClips.length} overlays`)
+      console.log('Filters:', JSON.stringify(filters, null, 2))
+    } else {
+      // Single overlay with full keyframe support
+      filters = [
+        `[0:v]${resFilter}[main]`, // Scale/normalize main video
+        scaleFilter.replace('[0:v]', '[main]'), // Scale overlay relative to main
+        `[ref][pip]overlay=${overlayX}:${overlayY}:eval=frame[v]` // Overlay with positioning
+      ]
+      
+      console.log('=== Single PiP Export ===')
+      console.log('Filters:', JSON.stringify(filters, null, 2))
+      console.log('Main clip:', mainClip)
+      console.log('Overlay clip:', overlayClips[0])
+      console.log('PiP settings:', { pipPosition, pipSize, overlayX, overlayY })
+    }
+    
+    console.log('Resolution:', resolution, '| Preset:', preset)
+    console.log('Output path:', outPath)
+    console.log('=========================')
     
     cmd.complexFilter(filters)
       
@@ -408,7 +508,7 @@ ipcMain.handle('export:pip', async (_e: any, args: {
       .outputOptions([
         '-map', '[v]',           // Use filtered video
         '-map', '0:a?',          // Try main audio first
-        '-map', '1:a?',          // Fallback to overlay audio
+        ...(overlayClips.length === 1 ? ['-map', '1:a?'] : []), // Fallback to overlay audio (single overlay only)
         '-map_metadata', '0',    // Use main video's metadata
         '-c:v', 'libx264',       // H.264 codec
         `-preset`, `${ffmpegPreset}`,
@@ -429,9 +529,16 @@ ipcMain.handle('export:pip', async (_e: any, args: {
           win.webContents.send('export:progress', progress)
         }
       })
-      .on('end', () => resolve({ ok: true, outPath }))
-      .on('error', (err: any) => reject(err))
+      .on('end', () => {
+        currentExportCommand = null
+        resolve({ ok: true, outPath })
+      })
+      .on('error', (err: any) => {
+        currentExportCommand = null
+        reject(err)
+      })
     
+    currentExportCommand = cmd
     cmd.run()
   })
 })

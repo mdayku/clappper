@@ -55,7 +55,14 @@ export default function Player() {
   // Load main video
   useEffect(() => {
     const v = mainVideoRef.current
-    if (!v || !mainClip) return
+    if (!v || !mainClip) {
+      // Cleanup: clear video source when no clip
+      if (v) {
+        v.src = ''
+        v.load() // Force release of resources
+      }
+      return
+    }
     
     const fileUrl = getFileUrl(mainClip.path)
     console.log('Loading main clip:', mainClip.name, fileUrl)
@@ -66,7 +73,11 @@ export default function Player() {
     }
     
     v.addEventListener('loadedmetadata', onLoadedMetadata)
-    return () => v.removeEventListener('loadedmetadata', onLoadedMetadata)
+    return () => {
+      v.removeEventListener('loadedmetadata', onLoadedMetadata)
+      // Cleanup on unmount or clip change
+      v.pause()
+    }
   }, [mainClip?.path, mainClip?.id])
 
   // Update video currentTime when trim points change
@@ -93,7 +104,14 @@ export default function Player() {
   useEffect(() => {
     overlayClips.forEach((clip, index) => {
       const v = overlayVideoRefs[index].current
-      if (!v || !clip) return
+      if (!v) return
+      
+      if (!clip) {
+        // Cleanup: clear video source when no clip
+        v.src = ''
+        v.load() // Force release of resources
+        return
+      }
       
       const fileUrl = getFileUrl(clip.path)
       console.log(`Loading overlay ${index + 1} clip:`, clip.name, fileUrl)
@@ -104,8 +122,16 @@ export default function Player() {
       }
       
       v.addEventListener('loadedmetadata', onLoadedMetadata)
-      return () => v.removeEventListener('loadedmetadata', onLoadedMetadata)
     })
+    
+    // Cleanup function for all overlay videos
+    return () => {
+      overlayVideoRefs.forEach(ref => {
+        if (ref.current) {
+          ref.current.pause()
+        }
+      })
+    }
   }, [overlayClips.map(c => c?.path).join(','), overlayClips.map(c => c?.id).join(',')])
 
   // Update overlay videos currentTime when trim points change

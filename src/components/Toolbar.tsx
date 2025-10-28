@@ -132,8 +132,6 @@ export default function Toolbar() {
 
   const exportSelected = async () => {
     try {
-      setShowExportModal(false)
-      setError(null)
       const mainTrack = useStore.getState().getMainTrack()
       const allOverlayTracks = useStore.getState().getOverlayTracks()
       const pipSettings = useStore.getState().pipSettings
@@ -143,10 +141,21 @@ export default function Toolbar() {
       // Get clips from ALL overlay tracks that have clips
       const overlayClips = allOverlayTracks.flatMap(track => track.clips)
       
+      // Validation: Block export on empty timeline
       if (mainClips.length === 0) {
-        setError('Please add clips to the main track first')
+        setError('Cannot export: Main track is empty. Please add at least one video clip.')
         return
       }
+      
+      // Validation: Check for zero-duration clips
+      const zeroDurationClips = mainClips.filter(c => c.end <= c.start)
+      if (zeroDurationClips.length > 0) {
+        setError(`Cannot export: ${zeroDurationClips.length} clip(s) have zero or negative duration. Please adjust trim points.`)
+        return
+      }
+      
+      setShowExportModal(false)
+      setError(null)
       
       // Validate all clips
       for (const clip of [...mainClips, ...overlayClips]) {
@@ -172,8 +181,7 @@ export default function Toolbar() {
       
       // Check if we need PiP export (main track + at least one overlay)
       if (mainClips.length > 0 && overlayClips.length > 0) {
-        // PiP export: Export first main clip with first overlay clip
-        // TODO: Support multiple overlays in one export (Phase 6)
+        // PiP export: Export first main clip with ALL overlay clips
         console.log(`Exporting PiP: ${mainClips.length} main clip(s), ${overlayClips.length} overlay clip(s)`)
         await window.clappper.exportPip({
           mainClip: {
@@ -181,11 +189,11 @@ export default function Toolbar() {
             start: mainClips[0].start,
             end: mainClips[0].end
           },
-          overlayClip: {
-            input: overlayClips[0].path,
-            start: overlayClips[0].start,
-            end: overlayClips[0].end
-          },
+          overlayClips: overlayClips.map(clip => ({
+            input: clip.path,
+            start: clip.start,
+            end: clip.end
+          })),
           outPath: savePath,
           pipPosition: pipSettings.position,
           pipSize: pipSettings.size,
@@ -229,8 +237,28 @@ export default function Toolbar() {
       }, 500)
     } catch (err) {
       console.error('Export failed:', err)
-      setError(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
       setIsExporting(false)
+      
+      // Provide more helpful error messages
+      let errorMessage = 'Export failed: '
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('enoent') || msg.includes('no such file')) {
+          errorMessage += 'File not found. The video file may have been moved or deleted.'
+        } else if (msg.includes('enospc') || msg.includes('no space')) {
+          errorMessage += 'Not enough disk space. Please free up some space and try again.'
+        } else if (msg.includes('eacces') || msg.includes('permission')) {
+          errorMessage += 'Permission denied. Please check file permissions or try a different location.'
+        } else if (msg.includes('codec')) {
+          errorMessage += 'Unsupported video codec. Try transcoding the video first.'
+        } else {
+          errorMessage += err.message
+        }
+      } else {
+        errorMessage += 'Unknown error occurred.'
+      }
+      
+      setError(errorMessage)
     }
   }
 
@@ -367,9 +395,35 @@ export default function Toolbar() {
                     </div>
                   </div>
                 </div>
-                <p style={{ fontSize: 14, color: '#666', textAlign: 'center', margin: 0 }}>
+                <p style={{ fontSize: 14, color: '#666', textAlign: 'center', margin: '0 0 16px 0' }}>
                   Please wait... This may take a few minutes.
                 </p>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await window.clappper.cancelExport()
+                        setIsExporting(false)
+                        setProgress(0)
+                        setError('Export cancelled')
+                      } catch (err) {
+                        console.error('Cancel failed:', err)
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: 14,
+                      border: '1px solid #c00',
+                      borderRadius: 4,
+                      background: 'white',
+                      color: '#c00',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Cancel Export
+                  </button>
+                </div>
               </div>
             ) : (
               // Show settings form
