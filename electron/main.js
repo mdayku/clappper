@@ -365,6 +365,12 @@ ipcMain.handle('dialog:savePath', async (_e, defaultName) => {
     });
     return canceled ? null : filePath;
 });
+ipcMain.handle('dialog:selectDirectory', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory', 'createDirectory']
+    });
+    return canceled ? null : filePaths[0];
+});
 ipcMain.handle('ffprobe:metadata', async (_e, filePath) => {
     return new Promise((resolve, reject) => {
         ffmpeg.ffprobe(filePath, (err, data) => {
@@ -739,7 +745,7 @@ const calculateOptimalScale = (width, height) => {
         const scaleX = maxWidth / width;
         const scaleY = maxHeight / height;
         const finalScale = Math.min(scaleX, scaleY);
-        scale = Math.floor(finalScale); // Round down to nearest integer
+        scale = Math.max(1, Math.floor(finalScale)); // Round down to nearest integer, clamp to at least 1
         outputWidth = width * scale;
         outputHeight = height * scale;
     }
@@ -774,12 +780,12 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
     if (width === 0 || height === 0) {
         throw new Error('Could not determine video resolution');
     }
-    // Calculate optimal scale factor (cap at 1080p)
-    const { scale, outputWidth, outputHeight } = calculateOptimalScale(width, height);
+    // Calculate optimal scale factor (automatically capped at 1080p)
+    const { scale: finalScale, outputWidth: finalOutputWidth, outputHeight: finalOutputHeight } = calculateOptimalScale(width, height);
     console.log(`=== AI Enhancement: Resolution Calculation ===`);
     console.log(`Input: ${width}×${height}`);
-    console.log(`Scale: ${scale}×`);
-    console.log(`Output: ${outputWidth}×${outputHeight}`);
+    console.log(`Auto-selected scale: ${finalScale}×`);
+    console.log(`Output: ${finalOutputWidth}×${finalOutputHeight}`);
     await fs.promises.mkdir(path.dirname(output), { recursive: true });
     // Create temp directory for frames
     const tempDir = path.join(path.dirname(output), '.enhance_temp_' + Date.now());
@@ -815,7 +821,7 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
         });
         // Count extracted frames
         const frameFiles = await fs.promises.readdir(frameDir);
-        const pngFiles = frameFiles.filter(f => f.endsWith('.png')).sort();
+        const pngFiles = frameFiles.filter((f) => f.endsWith('.png')).sort();
         const totalFrames = pngFiles.length;
         console.log(`Extracted ${totalFrames} frames`);
         if (totalFrames === 0) {
@@ -823,8 +829,8 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
         }
         // Step 2: Process frames through Real-ESRGAN (with batch processing)
         console.log('=== AI Enhancement: Processing Frames ===');
-        console.log(`Model: realesrgan-x4plus (${scale}× upscale)`);
-        console.log(`Output resolution: ${outputWidth}×${outputHeight}`);
+        console.log(`Model: realesrgan-x4plus (${finalScale}× upscale)`);
+        console.log(`Output resolution: ${finalOutputWidth}×${finalOutputHeight}`);
         console.log('Enhanced dir:', enhancedDir);
         // Send initial info to UI
         if (win)
@@ -833,9 +839,9 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
                 frame: 0,
                 totalFrames,
                 percent: 0,
-                eta: `Processing ${totalFrames} frames with ${scale}× upscale to ${outputWidth}×${outputHeight}`,
-                outputResolution: `${outputWidth}×${outputHeight}`,
-                scale: scale
+                eta: `Processing ${totalFrames} frames with ${finalScale}× upscale to ${finalOutputWidth}×${finalOutputHeight}`,
+                outputResolution: `${finalOutputWidth}×${finalOutputHeight}`,
+                scale: finalScale
             });
         const batchSize = 4; // Process 4 frames in parallel
         const startTime = Date.now();
@@ -852,7 +858,7 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
                         '-i', inputFrame,
                         '-o', outputFrame,
                         '-n', 'realesrgan-x4plus',
-                        '-s', scale.toString(),
+                        '-s', finalScale.toString(),
                         '-m', modelsPath,
                         '-v' // verbose output
                     ], { cwd: path.dirname(realesrganPath) });
@@ -895,13 +901,13 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
         // Step 3: Reassemble enhanced frames into video with audio passthrough
         console.log('=== AI Enhancement: Reassembling Video ===');
         console.log('Output:', output);
-        console.log('Output resolution:', `${outputWidth}×${outputHeight}`);
+        console.log('Output resolution:', `${finalOutputWidth}×${finalOutputHeight}`);
         await new Promise((resolve, reject) => {
             const cmd = ffmpeg()
                 .input(path.join(enhancedDir, 'frame_%06d.png'))
                 .inputOptions(['-framerate', '30'])
                 .input(input) // For audio passthrough
-                .videoFilters(`scale=${outputWidth}:${outputHeight}`) // Ensure exact resolution
+                .videoFilters(`scale=${finalOutputWidth}:${finalOutputHeight}`) // Ensure exact resolution
                 .outputOptions([
                 '-c:v', 'libx264',
                 '-preset', 'medium',
@@ -934,14 +940,14 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
         await fs.promises.rm(tempDir, { recursive: true, force: true });
         console.log('=== AI Enhancement Complete ===');
         console.log('Output file:', output);
-        console.log('Final resolution:', `${outputWidth}×${outputHeight}`);
+        console.log('Final resolution:', `${finalOutputWidth}×${finalOutputHeight}`);
         currentEnhanceCommand = null;
         return {
             ok: true,
             outPath: output,
-            outputWidth,
-            outputHeight,
-            scale
+            outputWidth: finalOutputWidth,
+            outputHeight: finalOutputHeight,
+            scale: finalScale
         };
     }
     catch (err) {
@@ -1017,3 +1023,85 @@ function buildKeyframeSizeExpression(keyframes) {
     }
     return expr;
 }
+// Extract Frames: Export video to image sequence
+ipcMain.handle('video:extract-frames', async (_e, args) => {
+    const { videoPath, outputDir, format = 'png', fps } = args;
+    try {
+        // Create output directory
+        await fs.promises.mkdir(outputDir, { recursive: true });
+        // Build output pattern
+        const outputPattern = path.join(outputDir, `frame_%06d.${format}`);
+        return new Promise((resolve, reject) => {
+            let frameCount = 0;
+            const cmd = ffmpeg(videoPath);
+            // Set FPS if specified (otherwise use source FPS)
+            if (fps) {
+                cmd.outputOptions(['-vf', `fps=${fps}`]);
+            }
+            cmd
+                .output(outputPattern)
+                .outputOptions(['-q:v', '2']) // High quality for JPEG, ignored for PNG
+                .on('progress', (progress) => {
+                if (progress.frames) {
+                    frameCount = progress.frames;
+                }
+            })
+                .on('end', () => {
+                console.log(`Extracted ${frameCount} frames to ${outputDir}`);
+                resolve({ ok: true, frameCount, outputDir });
+            })
+                .on('error', (err) => {
+                console.error('Frame extraction error:', err);
+                reject(err);
+            })
+                .run();
+        });
+    }
+    catch (err) {
+        console.error('Extract frames failed:', err);
+        return { ok: false, message: err.message };
+    }
+});
+// Compose Video: Create video from image sequence
+ipcMain.handle('video:compose-from-frames', async (_e, args) => {
+    const { frameDir, outputPath, fps = 30, pattern = 'frame_%06d.png', audioPath } = args;
+    try {
+        // Ensure output directory exists
+        await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+        const inputPattern = path.join(frameDir, pattern);
+        return new Promise((resolve, reject) => {
+            const cmd = ffmpeg()
+                .input(inputPattern)
+                .inputOptions(['-framerate', fps.toString()]);
+            // Add audio if provided
+            if (audioPath) {
+                cmd.input(audioPath)
+                    .outputOptions([
+                    '-c:a', 'aac',
+                    '-shortest' // End when shortest stream ends
+                ]);
+            }
+            cmd
+                .outputOptions([
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '20',
+                '-pix_fmt', 'yuv420p'
+            ])
+                .output(outputPath)
+                .on('end', () => {
+                console.log(`Composed video: ${outputPath}`);
+                resolve({ ok: true, outPath: outputPath });
+            })
+                .on('error', (err) => {
+                console.error('Video composition error:', err);
+                reject(err);
+            })
+                .run();
+        });
+    }
+    catch (err) {
+        console.error('Compose video failed:', err);
+        return { ok: false, message: err.message };
+    }
+});

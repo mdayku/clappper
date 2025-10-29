@@ -71,11 +71,11 @@ ipcMain.handle('ai:detect-gpu', async () => {
       ])
       
       let output = ''
-      process.stdout.on('data', (data) => {
+      process.stdout.on('data', (data: Buffer) => {
         output += data.toString()
       })
       
-      process.on('close', (code) => {
+      process.on('close', (code: number | null) => {
         if (code === 0) {
           resolve(output.trim())
         } else {
@@ -910,7 +910,7 @@ ipcMain.handle('ai:enhance', async (_e: any, args: { input: string; output: stri
 
     // Count extracted frames
     const frameFiles = await fs.promises.readdir(frameDir)
-    const pngFiles = frameFiles.filter(f => f.endsWith('.png')).sort()
+    const pngFiles = frameFiles.filter((f: string) => f.endsWith('.png')).sort()
     const totalFrames = pngFiles.length
 
     console.log(`Extracted ${totalFrames} frames`)
@@ -943,7 +943,7 @@ ipcMain.handle('ai:enhance', async (_e: any, args: { input: string; output: stri
       const batch = pngFiles.slice(i, Math.min(i + batchSize, pngFiles.length))
       
       // Process batch in parallel
-      await Promise.all(batch.map(async (frameFile, batchIndex) => {
+      await Promise.all(batch.map(async (frameFile: string, batchIndex: number) => {
         const globalIndex = i + batchIndex
         const inputFrame = path.join(frameDir, frameFile)
         const outputFrame = path.join(enhancedDir, frameFile)
@@ -964,7 +964,7 @@ ipcMain.handle('ai:enhance', async (_e: any, args: { input: string; output: stri
             currentEnhanceCommand = process
           }
 
-          process.on('close', (code) => {
+          process.on('close', (code: number | null) => {
             if (code === 0) {
               resolve()
             } else {
@@ -972,7 +972,7 @@ ipcMain.handle('ai:enhance', async (_e: any, args: { input: string; output: stri
             }
           })
 
-          process.on('error', (err) => reject(err))
+          process.on('error', (err: Error) => reject(err))
         })
       }))
 
@@ -1157,7 +1157,7 @@ ipcMain.handle('video:extract-frames', async (_e: any, args: { videoPath: string
       cmd
         .output(outputPattern)
         .outputOptions(['-q:v', '2']) // High quality for JPEG, ignored for PNG
-        .on('progress', (progress) => {
+        .on('progress', (progress: any) => {
           if (progress.frames) {
             frameCount = progress.frames
           }
@@ -1166,7 +1166,7 @@ ipcMain.handle('video:extract-frames', async (_e: any, args: { videoPath: string
           console.log(`Extracted ${frameCount} frames to ${outputDir}`)
           resolve({ ok: true, frameCount, outputDir })
         })
-        .on('error', (err) => {
+        .on('error', (err: Error) => {
           console.error('Frame extraction error:', err)
           reject(err)
         })
@@ -1220,7 +1220,7 @@ ipcMain.handle('video:compose-from-frames', async (_e: any, args: {
           console.log(`Composed video: ${outputPath}`)
           resolve({ ok: true, outPath: outputPath })
         })
-        .on('error', (err) => {
+        .on('error', (err: Error) => {
           console.error('Video composition error:', err)
           reject(err)
         })

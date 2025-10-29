@@ -37,5 +37,8 @@ contextBridge.exposeInMainWorld('clappper', {
     onEnhanceProgress: (cb) => {
         ipcRenderer.removeAllListeners('ai:enhance:progress');
         ipcRenderer.on('ai:enhance:progress', (_e, progress) => cb(progress));
-    }
+    },
+    extractFrames: (payload) => ipcRenderer.invoke('video:extract-frames', payload),
+    composeVideo: (payload) => ipcRenderer.invoke('video:compose-from-frames', payload),
+    selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory')
 });
