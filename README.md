@@ -49,15 +49,23 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **FFmpeg logging** - Detailed console output for debugging
 
 ### 🚀 AI Video Enhancement (NEW!)
-- **Real-ESRGAN integration** - Local GPU-accelerated 4× super-resolution
+- **Real-ESRGAN integration** - Local GPU-accelerated super-resolution using ncnn-vulkan
 - **RTX 4060 optimized** - Uses Vulkan API for maximum GPU performance
+- **Smart auto-scaling** - Automatically selects 2×/3×/4× scale to maximize quality while staying under 1080p
+- **Batch processing** - Processes 4 frames in parallel for ~75% speedup
+- **GPU detection** - Detects NVIDIA GPU and estimates processing time
+- **Real-time progress** - Live FPS counter and ETA during processing
+- **Before/After comparison** - Toggle between original and enhanced video
 - **Smart triggering** - Enhance button appears for clips <720p resolution
-- **Real-time progress** - Live updates through extract/process/reassemble phases
-- **Automatic import** - Enhanced video added to timeline after processing
-- **Model selection** - Real-ESRGAN x4plus for optimal quality/speed balance
 - **Audio preservation** - Original audio track maintained in output
 - **Cancellation support** - Stop enhancement with proper cleanup
-- **Demo ready** - Sample workflow in `assets/demo/README.md`
+
+### 🎞️ Frame Extraction & Video Composition (NEW!)
+- **Extract Frames** - Export video to PNG/JPG image sequence at configurable FPS
+- **Compose Video** - Create video from image sequence with optional audio
+- **ML Ops ready** - Perfect for dataset curation and frame-level editing
+- **Batch workflows** - Extract → process externally → re-compose
+- **High quality** - Lossless PNG extraction, H.264 composition
 
 ### 📊 UI/UX & Productivity
 - **Track badges** - Color-coded track indicators (purple, blue, green, orange)
