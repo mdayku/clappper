@@ -670,6 +670,23 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 - [x] Directory selection dialog ✅
 - [x] Auto-import composed video to timeline ✅
 
+**8.9: Image Filtering Mode for ML Ops** (Priority 9) ✅ COMPLETE
+- [x] Add filtering progress state to Zustand store ✅
+- [x] Create ImageFilter component with setup modal ✅
+- [x] Full-screen image viewer with keyboard controls ✅
+- [x] Implement K (keep), D (delete), U (undo), ESC (exit) shortcuts ✅
+- [x] Progress tracking with percentage and counter ✅
+- [x] Undo stack for last 50 delete operations ✅
+- [x] Auto-create `bad_images` folder for rejected images ✅
+- [x] Handle filename conflicts with unique naming ✅
+- [x] Folder completion with optional destination directory ✅
+- [x] Smart image scaling with pixelated rendering for tiny images ✅
+- [x] Integration with Extract Frames workflow ✅
+- [x] Add "Filter Images" button to Toolbar ✅
+- [x] IPC handlers for folder listing and file operations ✅
+- [x] Support both direct image folders and nested structures ✅
+- [x] Progress persistence across app restarts ✅
+
 **Enhancement Specs**:
 
 **Performance Estimates (RTX 4060)**:

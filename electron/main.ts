@@ -1215,17 +1215,94 @@ ipcMain.handle('video:compose-from-frames', async (_e: any, args: {
   pattern?: string;
   audioPath?: string;
 }) => {
-  const { frameDir, outputPath, fps = 30, pattern = 'frame_%06d.png', audioPath } = args
+  const { frameDir, outputPath, fps = 30, pattern, audioPath } = args
   
   try {
     // Ensure output directory exists
     await fs.promises.mkdir(path.dirname(outputPath), { recursive: true })
     
-    const inputPattern = path.join(frameDir, pattern)
+    // Auto-detect pattern if not provided
+    let inputPattern = pattern ? path.join(frameDir, pattern) : null
     
+    if (!inputPattern) {
+      // Read directory and find images
+      const files = await fs.promises.readdir(frameDir)
+      const imageFiles = files
+        .filter((f: string) => /\.(png|jpg|jpeg)$/i.test(f))
+        .sort()
+      
+      if (imageFiles.length === 0) {
+        throw new Error('No image files found in directory')
+      }
+      
+      // Check if files follow frame_%06d pattern
+      if (imageFiles[0].match(/^frame_\d{6}\.(png|jpg|jpeg)$/i)) {
+        // Standard frame pattern
+        const ext = path.extname(imageFiles[0])
+        inputPattern = path.join(frameDir, `frame_%06d${ext}`)
+      } else {
+        // Arbitrary filenames - create a concat file list
+        const concatFilePath = path.join(frameDir, 'concat_list.txt')
+        const concatContent = imageFiles.map((f: string) => `file '${f}'\nduration ${1/fps}`).join('\n')
+        // Add the last image again without duration (required by concat demuxer)
+        const finalContent = concatContent + `\nfile '${imageFiles[imageFiles.length - 1]}'`
+        await fs.promises.writeFile(concatFilePath, finalContent, 'utf8')
+        
+        return new Promise<{ ok: boolean; outPath: string }>((resolve, reject) => {
+          const cmd = ffmpeg()
+            .input(concatFilePath)
+            .inputOptions([
+              '-f', 'concat',
+              '-safe', '0'
+            ])
+          
+          // Add audio if provided
+          if (audioPath) {
+            cmd.input(audioPath)
+              .outputOptions([
+                '-c:a', 'aac',
+                '-shortest'
+              ])
+          }
+          
+          cmd
+            .outputOptions([
+              '-c:v', 'libx264',
+              '-preset', 'medium',
+              '-crf', '20',
+              '-pix_fmt', 'yuv420p',
+              '-r', fps.toString() // Set output framerate
+            ])
+            .output(outputPath)
+            .on('end', async () => {
+              // Clean up concat file
+              try {
+                await fs.promises.unlink(concatFilePath)
+              } catch (e) {
+                console.warn('Failed to delete concat file:', e)
+              }
+              console.log(`Composed video: ${outputPath}`)
+              resolve({ ok: true, outPath: outputPath })
+            })
+            .on('error', async (err: Error) => {
+              // Clean up concat file on error
+              try {
+                await fs.promises.unlink(concatFilePath)
+              } catch (e) {
+                console.warn('Failed to delete concat file:', e)
+              }
+              console.error('Video composition error:', err)
+              reject(err)
+            })
+            .run()
+        })
+      }
+    }
+    
+    // Standard pattern-based approach
     return new Promise<{ ok: boolean; outPath: string }>((resolve, reject) => {
       const cmd = ffmpeg()
-        .input(inputPattern)
+        .input(inputPattern!)
         .inputOptions(['-framerate', fps.toString()])
       
       // Add audio if provided

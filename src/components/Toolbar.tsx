@@ -348,8 +348,8 @@ export default function Toolbar() {
       const result = await window.clappper.composeVideo({
         frameDir,
         outputPath,
-        fps: 30,
-        pattern: 'frame_%06d.png'
+        fps: 30
+        // pattern is auto-detected from the files in frameDir
       })
       
       setIsExporting(false)

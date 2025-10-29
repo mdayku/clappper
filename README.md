@@ -67,6 +67,16 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Batch workflows** - Extract → process externally → re-compose
 - **High quality** - Lossless PNG extraction, H.264 composition
 
+### 🖼️ Image Filtering Mode (NEW!)
+- **Dataset curation** - Triage image datasets with keyboard controls
+- **K/D/U/ESC shortcuts** - Keep, Delete, Undo, Exit for rapid filtering
+- **Progress persistence** - Resume filtering sessions across app restarts
+- **Undo stack** - Restore last 50 deleted images
+- **Auto bad folder** - Rejected images moved to `bad_images` subdirectory
+- **Smart scaling** - Tiny images blown up with crisp pixelated rendering
+- **Extract integration** - Filter frames immediately after video extraction
+- **ML Ops workflow** - Extract → Filter → Train pipeline for computer vision
+
 ### 📊 UI/UX & Productivity
 - **Track badges** - Color-coded track indicators (purple, blue, green, orange)
 - **Overlay counter** - Shows active overlays in player
@@ -85,6 +95,10 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Ctrl+Shift+Z** - Redo
 - **Ctrl+S** - Save Project
 - **Ctrl+O** - Load Project
+- **K** - Keep image (filtering mode only)
+- **D** - Delete image (filtering mode only)
+- **U** - Undo last delete (filtering mode only)
+- **ESC** - Exit filtering mode
 
 ### 💾 Project Persistence (Phase 7.2)
 - **Autosave** - Every 5 seconds to AppData
@@ -133,6 +147,7 @@ The installer includes FFmpeg and all dependencies - no external installs requir
 
 ## 📖 How to Use
 
+### Video Editing Workflow
 1. **Import** - Click Import, select video files (multiple selection supported)
 2. **Organize** - Drag clips to reorder or move between tracks (main/overlay)
 3. **Configure Overlays** - Use dropdown to show 0-4 overlay tracks
@@ -141,6 +156,22 @@ The installer includes FFmpeg and all dependencies - no external installs requir
 6. **Adjust Size** - Use size slider (15-50%) in PiP controls panel
 7. **Preview** - Press play to watch the sequence with PiP effect
 8. **Export** - Click Export, choose save location, wait for progress → done!
+
+### AI Enhancement Workflow
+1. **Select low-res clip** - Click a clip with resolution <720p
+2. **Click Enhance** - Opens AI enhancement modal with GPU info and ETA
+3. **Start Enhancement** - Automatic optimal scaling (up to 1080p)
+4. **Wait for processing** - Real-time progress with FPS and ETA
+5. **Review result** - Enhanced clip auto-imported to timeline
+6. **Compare** - Use before/after comparison modal if needed
+
+### ML Ops Dataset Curation Workflow
+1. **Extract Frames** - Click "Extract Frames", select video, choose output directory
+2. **Filter Images** - Click "Filter Images" (or accept prompt after extraction)
+3. **Select directories** - Choose source folder and optional destination
+4. **Triage images** - Use K (keep), D (delete), U (undo), ESC (exit)
+5. **Auto-completion** - Folder moves to destination when all images processed
+6. **Train model** - Use kept images for computer vision training
 
 ## 🏗️ Architecture
 
