@@ -25,6 +25,15 @@ interface State {
   visibleOverlayCount: number // How many overlay tracks to show (0-4)
   exportSettings: ExportSettings
   
+  // Image Filtering
+  filteringProgress: Record<string, {
+    currentFolder: string
+    currentIndex: number
+    lastFile: string
+  }>
+  setFilteringProgress: (folder: string, data: { currentFolder: string; currentIndex: number; lastFile: string }) => void
+  getFilteringProgress: (folder: string) => { currentFolder: string; currentIndex: number; lastFile: string } | undefined
+  
   // Undo/Redo
   history: HistorySnapshot[]
   historyIndex: number
@@ -190,6 +199,16 @@ export const useStore = create<State>((set, get) => ({
     resolution: '1080p',
     preset: 'medium'
   },
+  
+  // Image Filtering state
+  filteringProgress: {},
+  setFilteringProgress: (folder, data) => set(s => ({
+    filteringProgress: {
+      ...s.filteringProgress,
+      [folder]: data
+    }
+  })),
+  getFilteringProgress: (folder) => get().filteringProgress[folder],
   
   // Track getters
   getTrack: (trackId) => get().tracks.find(t => t.id === trackId),

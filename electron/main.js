@@ -1132,3 +1132,108 @@ ipcMain.handle('video:compose-from-frames', async (_e, args) => {
         return { ok: false, message: err.message };
     }
 });
+// ========== IMAGE FILTERING HANDLERS ==========
+// List folders containing images in a directory
+ipcMain.handle('filter:listFolders', async (_e, dirPath) => {
+    try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        const folders = [];
+        // First, check if the directory itself contains images
+        const filesInRoot = await fs.promises.readdir(dirPath);
+        const hasImagesInRoot = filesInRoot.some((f) => /\.(png|jpg|jpeg)$/i.test(f));
+        if (hasImagesInRoot) {
+            // If the source directory itself contains images, treat it as a single folder
+            return [dirPath];
+        }
+        // Otherwise, look for subdirectories containing images
+        for (const entry of entries) {
+            if (entry.isDirectory()) {
+                const folderPath = path.join(dirPath, entry.name);
+                // Check if folder contains images
+                const files = await fs.promises.readdir(folderPath);
+                const hasImages = files.some((f) => /\.(png|jpg|jpeg)$/i.test(f));
+                if (hasImages) {
+                    folders.push(folderPath);
+                }
+            }
+        }
+        return folders.sort();
+    }
+    catch (err) {
+        console.error('Failed to list folders:', err);
+        throw err;
+    }
+});
+// Get all images in a folder
+ipcMain.handle('filter:getImages', async (_e, folderPath) => {
+    try {
+        const files = await fs.promises.readdir(folderPath);
+        const imageFiles = files
+            .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+            .map((f) => path.join(folderPath, f))
+            .sort();
+        return imageFiles;
+    }
+    catch (err) {
+        console.error('Failed to get images:', err);
+        throw err;
+    }
+});
+// Move image to bad_images folder
+ipcMain.handle('filter:moveToBad', async (_e, imagePath, folderPath) => {
+    try {
+        const parentDir = path.dirname(folderPath);
+        const badDir = path.join(parentDir, 'bad_images');
+        // Create bad_images directory if it doesn't exist
+        await fs.promises.mkdir(badDir, { recursive: true });
+        const fileName = path.basename(imagePath);
+        let destPath = path.join(badDir, fileName);
+        // Handle filename conflicts with unique naming
+        let counter = 1;
+        while (await fs.promises.access(destPath).then(() => true).catch(() => false)) {
+            const ext = path.extname(fileName);
+            const base = path.basename(fileName, ext);
+            destPath = path.join(badDir, `${base}_${counter}${ext}`);
+            counter++;
+        }
+        // Move the file
+        await fs.promises.rename(imagePath, destPath);
+        return destPath;
+    }
+    catch (err) {
+        console.error('Failed to move to bad:', err);
+        throw err;
+    }
+});
+// Restore image from bad_images folder
+ipcMain.handle('filter:restoreImage', async (_e, badPath, originalPath) => {
+    try {
+        await fs.promises.rename(badPath, originalPath);
+        return { ok: true };
+    }
+    catch (err) {
+        console.error('Failed to restore image:', err);
+        throw err;
+    }
+});
+// Move completed folder to destination
+ipcMain.handle('filter:moveFolder', async (_e, sourcePath, destPath) => {
+    try {
+        const folderName = path.basename(sourcePath);
+        const newPath = path.join(destPath, folderName);
+        // Check if destination already exists
+        let finalPath = newPath;
+        let counter = 1;
+        while (await fs.promises.access(finalPath).then(() => true).catch(() => false)) {
+            finalPath = path.join(destPath, `${folderName}_${counter}`);
+            counter++;
+        }
+        // Move the entire folder
+        await fs.promises.rename(sourcePath, finalPath);
+        return { ok: true, newPath: finalPath };
+    }
+    catch (err) {
+        console.error('Failed to move folder:', err);
+        throw err;
+    }
+});

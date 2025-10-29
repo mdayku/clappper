@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useStore } from '../store'
 import ScreenRecorder from './ScreenRecorder'
 import EnhanceModal from './EnhanceModal'
+import ImageFilter from './ImageFilter'
 
 export default function Toolbar() {
   const [progress, setProgress] = useState(0)
@@ -11,6 +12,8 @@ export default function Toolbar() {
   const [error, setError] = useState<string | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
   const [showEnhanceModal, setShowEnhanceModal] = useState(false)
+  const [showFilterModal, setShowFilterModal] = useState(false)
+  const [filterInitialDir, setFilterInitialDir] = useState<string | undefined>(undefined)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [stopRecordingFn, setStopRecordingFn] = useState<(() => void) | null>(null)
@@ -312,7 +315,16 @@ export default function Toolbar() {
       setIsExporting(false)
       
       if (result.ok) {
-        alert(`Extracted ${result.frameCount} frames to:\n${result.outputDir}`)
+        // Offer to start filtering immediately
+        const startFiltering = confirm(
+          `Extracted ${result.frameCount} frames to:\n${result.outputDir}\n\n` +
+          `Would you like to start filtering these images now?`
+        )
+        
+        if (startFiltering) {
+          setFilterInitialDir(result.outputDir)
+          setShowFilterModal(true)
+        }
       } else {
         setError(`Frame extraction failed: ${'message' in result ? result.message : 'Unknown error'}`)
       }
@@ -461,6 +473,9 @@ export default function Toolbar() {
         </button>
         <button onClick={composeFromFrames} disabled={isExporting || isImporting}>
           Compose Video
+        </button>
+        <button onClick={() => setShowFilterModal(true)} disabled={isExporting || isImporting}>
+          Filter Images
         </button>
         <button 
           onClick={clearAll} 
@@ -736,6 +751,16 @@ export default function Toolbar() {
       <EnhanceModal
         isOpen={showEnhanceModal}
         onClose={() => setShowEnhanceModal(false)}
+      />
+      
+      {/* Image Filter Modal */}
+      <ImageFilter
+        isOpen={showFilterModal}
+        onClose={() => {
+          setShowFilterModal(false)
+          setFilterInitialDir(undefined)
+        }}
+        initialSourceDir={filterInitialDir}
       />
     </div>
   )

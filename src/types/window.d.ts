@@ -74,6 +74,13 @@ declare global {
       selectDirectory: () => Promise<string | null>
       createTempDir: () => Promise<string>
       cleanupTempDir: (tempDir: string) => Promise<{ ok: boolean; message?: string }>
+      
+      // Image Filtering
+      filterListFolders: (dirPath: string) => Promise<string[]>
+      filterGetImages: (folderPath: string) => Promise<string[]>
+      filterMoveToBad: (imagePath: string, folderPath: string) => Promise<string>
+      filterRestoreImage: (badPath: string, originalPath: string) => Promise<{ ok: boolean }>
+      filterMoveFolder: (sourcePath: string, destPath: string) => Promise<{ ok: boolean; newPath: string }>
     }
   }
 }

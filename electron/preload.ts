@@ -55,6 +55,13 @@ contextBridge.exposeInMainWorld('clappper', {
     ipcRenderer.invoke('video:compose-from-frames', payload),
   selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
   createTempDir: () => ipcRenderer.invoke('recording:createTempDir'),
-  cleanupTempDir: (tempDir: string) => ipcRenderer.invoke('recording:cleanupTempDir', tempDir)
+  cleanupTempDir: (tempDir: string) => ipcRenderer.invoke('recording:cleanupTempDir', tempDir),
+  
+  // Image Filtering
+  filterListFolders: (dirPath: string) => ipcRenderer.invoke('filter:listFolders', dirPath),
+  filterGetImages: (folderPath: string) => ipcRenderer.invoke('filter:getImages', folderPath),
+  filterMoveToBad: (imagePath: string, folderPath: string) => ipcRenderer.invoke('filter:moveToBad', imagePath, folderPath),
+  filterRestoreImage: (badPath: string, originalPath: string) => ipcRenderer.invoke('filter:restoreImage', badPath, originalPath),
+  filterMoveFolder: (sourcePath: string, destPath: string) => ipcRenderer.invoke('filter:moveFolder', sourcePath, destPath)
 })
 
