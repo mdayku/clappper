@@ -579,16 +579,25 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 **Tasks**:
 
 **8.0: Multi-Source Screen Recording Compositing** (Priority 0 - In Progress)
-- [ ] Fix canvas.captureStream() in Electron OR use FFmpeg post-processing
-- [ ] Composite webcam/window overlays onto main screen during recording
-- [ ] Support up to 4 simultaneous overlay tracks with configurable size/position
+- [ ] Record all streams separately (main + overlays) to temp directory
+- [ ] Track all MediaRecorder instances and their output files
+- [ ] Show compositing progress modal after recording stops
+- [ ] Composite recorded streams using existing PiP export infrastructure
+- [ ] Clean up temp files after successful compositing
+- [ ] Handle errors (keep temp files, show path to user)
 - [ ] Test with various combinations (screen+webcam, screen+window, etc.)
-- [ ] Ensure composited recording maintains 30fps and sync
+- [ ] Ensure final output maintains 30fps and sync
 
-**Current Status**: Screen recorder has UI for 4 overlay tracks (main + overlay-1 through overlay-4) with source selection (screen/window/webcam), size controls (15-50%), and position presets. However, the canvas compositing is not working - currently only records the main screen stream directly via MediaRecorder. Need to either:
-1. Fix canvas.captureStream() to properly composite multiple video sources in Electron
-2. Use FFmpeg post-processing to composite recorded streams
-3. Use alternative approach (e.g., record streams separately, then composite with FFmpeg)
+**Implementation Approach**: **Solution 2 - FFmpeg Post-Processing**
+- Record each source (main + up to 4 overlays) as separate WebM files in system temp directory
+- When user clicks "Stop", show compositing modal with progress bar
+- Use existing `export:pip` IPC handler to composite all streams with configured positions/sizes
+- Automatically clean up temp files after successful compositing
+- Import final composited video to timeline
+- **Pros**: Reliable, reuses existing code, works without GPU, high quality
+- **Cons**: Post-processing delay (acceptable for typical 2-5 min recordings)
+
+**Current Status**: Screen recorder has complete UI for 4 overlay tracks with source selection (screen/window/webcam), size controls (15-50%), and position presets. Currently only records main screen. Need to implement multi-stream recording + post-compositing.
 
 **8.1: Real-ESRGAN Integration** (Priority 1) ✅ COMPLETE
 - [x] Research Real-ESRGAN models (x2, x4, anime variants) ✅
