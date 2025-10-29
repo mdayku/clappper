@@ -38,7 +38,7 @@ const calculateOptimalScale = (width: number, height: number): { scale: number; 
     const scaleX = maxWidth / width
     const scaleY = maxHeight / height
     const finalScale = Math.min(scaleX, scaleY)
-    scale = Math.floor(finalScale)
+    scale = Math.max(1, Math.floor(finalScale)) // Clamp to at least 1
     outputWidth = width * scale
     outputHeight = height * scale
   }
@@ -68,8 +68,8 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
   useEffect(() => {
     if (!window.clappper) return
 
-    const handleProgress = (p: EnhanceProgress) => {
-      setProgress(p)
+    const handleProgress = (p: any) => {
+      setProgress(p as EnhanceProgress)
     }
 
     window.clappper.onEnhanceProgress(handleProgress)
@@ -97,9 +97,10 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
       setIsEnhancing(true)
       setProgress(null)
 
-      // Generate output path next to input
-      const inputDir = activeClip.path.substring(0, activeClip.path.lastIndexOf('\\') || activeClip.path.lastIndexOf('/'))
-      const inputName = activeClip.path.substring(activeClip.path.lastIndexOf('\\') + 1 || activeClip.path.lastIndexOf('/') + 1)
+      // Generate output path next to input (handle both Windows and macOS path separators)
+      const sepIndex = Math.max(activeClip.path.lastIndexOf('/'), activeClip.path.lastIndexOf('\\'))
+      const inputDir = sepIndex >= 0 ? activeClip.path.slice(0, sepIndex) : '.'
+      const inputName = sepIndex >= 0 ? activeClip.path.slice(sepIndex + 1) : activeClip.path
       const nameWithoutExt = inputName.substring(0, inputName.lastIndexOf('.'))
       const outputPath = `${inputDir}/${nameWithoutExt}_enhanced.mp4`
 
@@ -124,6 +125,7 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
             const enhancedHeight = result.outputHeight || v?.height || 0
             
             return {
+              id: `clip_${Date.now()}_${Math.random()}`,
               path: f,
               name: f.split(/[/\\]/).pop() || f,
               duration: dur,
@@ -175,12 +177,12 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
 
   if (!isOpen || !activeClip) return null
 
-  const isLowRes = activeClip.height < 720
-  const { scale: finalScale, outputWidth: finalOutputWidth, outputHeight: finalOutputHeight } = calculateOptimalScale(activeClip.width, activeClip.height)
+  const isLowRes = (activeClip.height || 0) < 720
+  const { scale: finalScale, outputWidth: finalOutputWidth, outputHeight: finalOutputHeight } = calculateOptimalScale(activeClip.width || 0, activeClip.height || 0)
   
   // Calculate estimated processing time
   const estimatedFrames = Math.ceil(activeClip.duration * 30) // 30fps
-  const estimatedFps = gpuInfo?.estimatedFps || 0.3
+  const estimatedFps = Math.max(0.1, gpuInfo?.estimatedFps || 0.3) // Guard against 0 or negative
   const estimatedSeconds = estimatedFrames / estimatedFps
   const estimatedMinutes = Math.floor(estimatedSeconds / 60)
   const estimatedSecsRemainder = Math.floor(estimatedSeconds % 60)

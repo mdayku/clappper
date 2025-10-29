@@ -822,7 +822,7 @@ const calculateOptimalScale = (width: number, height: number): { scale: number; 
     const scaleX = maxWidth / width
     const scaleY = maxHeight / height
     const finalScale = Math.min(scaleX, scaleY)
-    scale = Math.floor(finalScale) // Round down to nearest integer
+    scale = Math.max(1, Math.floor(finalScale)) // Round down to nearest integer, clamp to at least 1
     outputWidth = width * scale
     outputHeight = height * scale
   }
