@@ -4,11 +4,10 @@ const fs = require('node:fs')
 const { spawn } = require('node:child_process')
 const ffmpeg = require('fluent-ffmpeg')
 
-// Suppress Chromium's verbose WGC (Windows Graphics Capture) errors in production
-if (app.isPackaged) {
-  app.commandLine.appendSwitch('disable-logging')
-  app.commandLine.appendSwitch('log-level', '3') // Only show fatal errors
-}
+// Suppress Chromium's verbose WGC (Windows Graphics Capture) errors
+// These are harmless warnings from the screen capture API
+app.commandLine.appendSwitch('disable-logging')
+app.commandLine.appendSwitch('log-level', '3') // Only show fatal errors
 
 // Determine ffmpeg path based on whether app is packaged
 const getFfmpegPath = () => {
@@ -393,6 +392,24 @@ ipcMain.handle('dialog:selectDirectory', async () => {
   return canceled ? null : filePaths[0]
 })
 
+// Create temp directory for multi-source recording
+ipcMain.handle('recording:createTempDir', async () => {
+  const tempDir = path.join(app.getPath('temp'), `clappper_recording_${Date.now()}`)
+  await fs.promises.mkdir(tempDir, { recursive: true })
+  return tempDir
+})
+
+// Cleanup temp directory
+ipcMain.handle('recording:cleanupTempDir', async (_e: any, tempDir: string) => {
+  try {
+    await fs.promises.rm(tempDir, { recursive: true, force: true })
+    return { ok: true }
+  } catch (err) {
+    console.error('Failed to cleanup temp dir:', err)
+    return { ok: false, message: err instanceof Error ? err.message : 'Unknown error' }
+  }
+})
+
 ipcMain.handle('ffprobe:metadata', async (_e: any, filePath: string) => {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err: any, data: any) => {
@@ -608,7 +625,7 @@ ipcMain.handle('export:concat', async (_e: any, args: { clips: Array<{input: str
 // Export with Picture-in-Picture overlay(s)
 ipcMain.handle('export:pip', async (_e: any, args: { 
   mainClip: {input: string; start: number; end: number}; 
-  overlayClips: Array<{input: string; start: number; end: number}>;
+  overlayClips: Array<{input: string; start: number; end: number; position?: string; size?: number}>;
   outPath: string;
   pipPosition: string;
   pipSize: number;
@@ -704,27 +721,39 @@ ipcMain.handle('export:pip', async (_e: any, args: {
     let filters: string[] = []
     
     if (useSimplePositioning) {
-      // Multi-overlay: chain overlays with automatic positioning
+      // Multi-overlay: chain overlays with user-specified positioning
       filters.push(`[0:v]${resFilter}[base0]`) // Scale/normalize main video
       
-      // Position overlays in corners with slight offset
-      const positions = [
-        { x: 16, y: 16 }, // top-left
-        { x: 'W-w-16', y: 16 }, // top-right
-        { x: 16, y: 'H-h-16' }, // bottom-left
-        { x: 'W-w-16', y: 'H-h-16' } // bottom-right
-      ]
+      // Helper to get position coordinates from position string
+      const getPositionCoords = (position: string) => {
+        const padding = 16
+        switch (position) {
+          case 'top-left':
+            return { x: padding, y: padding }
+          case 'top-right':
+            return { x: 'W-w-16', y: padding }
+          case 'bottom-left':
+            return { x: padding, y: 'H-h-16' }
+          case 'bottom-right':
+          default:
+            return { x: 'W-w-16', y: 'H-h-16' }
+        }
+      }
       
-      overlayClips.forEach((_, index) => {
+      overlayClips.forEach((overlayClip, index) => {
         const inputIdx = index + 1 // overlay inputs start at 1
         const baseLabel = index === 0 ? 'base0' : `base${index}`
         const outLabel = index === overlayClips.length - 1 ? 'v' : `base${index + 1}`
         const pipLabel = `pip${index}`
         const refLabel = `ref${index}`
-        const pos = positions[index % 4]
+        
+        // Use per-overlay position and size if provided, otherwise use defaults
+        const overlayPosition = overlayClip.position || pipPosition
+        const overlaySize = overlayClip.size !== undefined ? overlayClip.size : pipSize
+        const pos = getPositionCoords(overlayPosition)
         
         // Scale overlay relative to current base
-        filters.push(`[${inputIdx}:v][${baseLabel}]scale2ref='oh*mdar':'ih*${pipSize}'[${pipLabel}][${refLabel}]`)
+        filters.push(`[${inputIdx}:v][${baseLabel}]scale2ref='oh*mdar':'ih*${overlaySize}'[${pipLabel}][${refLabel}]`)
         // Overlay on base
         filters.push(`[${refLabel}][${pipLabel}]overlay=${pos.x}:${pos.y}:eval=frame[${outLabel}]`)
       })

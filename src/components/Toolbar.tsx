@@ -11,6 +11,9 @@ export default function Toolbar() {
   const [error, setError] = useState<string | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
   const [showEnhanceModal, setShowEnhanceModal] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [stopRecordingFn, setStopRecordingFn] = useState<(() => void) | null>(null)
 
   React.useEffect(() => {
     if (window.clappper) {
@@ -440,7 +443,13 @@ export default function Toolbar() {
         <button onClick={onImport} disabled={isExporting || isImporting}>
           {isImporting ? 'Importing...' : 'Import'}
         </button>
-        <ScreenRecorder />
+        <ScreenRecorder 
+          onRecordingStateChange={(recording, time, stopFn) => {
+            setIsRecording(recording)
+            setRecordingTime(time)
+            setStopRecordingFn(() => stopFn)
+          }}
+        />
         <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export'}
         </button>
@@ -484,11 +493,56 @@ export default function Toolbar() {
         </div>
         
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          {isRecording && (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 8, 
+              padding: '4px 12px',
+              background: '#fee',
+              borderRadius: 4,
+              border: '1px solid #fcc'
+            }}>
+              <div style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#e74c3c',
+                animation: 'pulse 1.5s ease-in-out infinite'
+              }} />
+              <span style={{ fontSize: 12, fontWeight: 'bold', color: '#e74c3c', fontFamily: 'monospace' }}>
+                {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+              </span>
+              <button
+                onClick={() => stopRecordingFn && stopRecordingFn()}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: 11,
+                  background: '#e74c3c',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ⏹ Stop
+              </button>
+            </div>
+          )}
           {allClips.length > 0 && <span style={{ fontSize: 12, color: '#666' }}>{allClips.length} clip(s)</span>}
           {transcodeProgress > 0 && transcodeProgress < 100 && <span style={{ fontSize: 12, color: '#666' }}>Converting: {transcodeProgress.toFixed(0)}%</span>}
           {progress > 0 && progress < 100 && <span style={{ fontSize: 12, color: '#666' }}>Export: {progress.toFixed(0)}%</span>}
         </div>
       </div>
+      
+      {/* Add CSS animation for pulsing dot */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+      `}</style>
       {error && (
         <div style={{ padding: '4px 8px', background: '#fee', color: '#c00', fontSize: 12, borderTop: '1px solid #fcc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{error}</span>

@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld('clappper', {
     ipcRenderer.invoke('video:extract-frames', payload),
   composeVideo: (payload: { frameDir: string; outputPath: string; fps?: number; pattern?: string; audioPath?: string }) => 
     ipcRenderer.invoke('video:compose-from-frames', payload),
-  selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory')
+  selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
+  createTempDir: () => ipcRenderer.invoke('recording:createTempDir'),
+  cleanupTempDir: (tempDir: string) => ipcRenderer.invoke('recording:cleanupTempDir', tempDir)
 })
 

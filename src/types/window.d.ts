@@ -44,7 +44,7 @@ declare global {
       }) => Promise<{ ok: boolean; outPath: string }>
       exportPip: (payload: {
         mainClip: {input: string; start: number; end: number}
-        overlayClips: Array<{input: string; start: number; end: number}>
+        overlayClips: Array<{input: string; start: number; end: number; position?: string; size?: number}>
         outPath: string
         pipPosition: string
         pipSize: number
@@ -72,6 +72,8 @@ declare global {
       extractFrames: (payload: { videoPath: string; outputDir: string; format?: string; fps?: number }) => Promise<{ ok: boolean; frameCount: number; outputDir: string } | { ok: false; message: string }>
       composeVideo: (payload: { frameDir: string; outputPath: string; fps?: number; pattern?: string; audioPath?: string }) => Promise<{ ok: boolean; outPath: string } | { ok: false; message: string }>
       selectDirectory: () => Promise<string | null>
+      createTempDir: () => Promise<string>
+      cleanupTempDir: (tempDir: string) => Promise<{ ok: boolean; message?: string }>
     }
   }
 }
