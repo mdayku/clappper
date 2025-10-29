@@ -47,6 +47,11 @@
         "from": "node_modules/ffmpeg-static/",
         "to": "ffmpeg/",
         "filter": ["**/*"]
+      },
+      {
+        "from": "resources/realesrgan/",
+        "to": "realesrgan/",
+        "filter": ["**/*"]
       }
     ],
     "mac": { 

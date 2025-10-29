@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useStore } from '../store'
 import ScreenRecorder from './ScreenRecorder'
+import EnhanceModal from './EnhanceModal'
 
 export default function Toolbar() {
   const [progress, setProgress] = useState(0)
@@ -9,6 +10,7 @@ export default function Toolbar() {
   const [transcodeProgress, setTranscodeProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [showEnhanceModal, setShowEnhanceModal] = useState(false)
 
   React.useEffect(() => {
     if (window.clappper) {
@@ -282,6 +284,94 @@ export default function Toolbar() {
     }
   }
   
+  const extractFrames = async () => {
+    const selectedId = useStore.getState().selectedId
+    const selectedClip = selectedId ? useStore.getState().getClipById(selectedId) : null
+    if (!selectedClip) return
+    
+    try {
+      const outputDir = await window.clappper.selectDirectory()
+      if (!outputDir) return // User cancelled
+      
+      const clipName = selectedClip.name.replace(/\.[^/.]+$/, '') // Remove extension
+      const framesDir = `${outputDir}/${clipName}_frames`
+      
+      setIsExporting(true)
+      setError(null)
+      
+      const result = await window.clappper.extractFrames({
+        videoPath: selectedClip.path,
+        outputDir: framesDir,
+        format: 'png',
+        fps: 30
+      })
+      
+      setIsExporting(false)
+      
+      if (result.ok) {
+        alert(`Extracted ${result.frameCount} frames to:\n${result.outputDir}`)
+      } else {
+        setError(`Frame extraction failed: ${'message' in result ? result.message : 'Unknown error'}`)
+      }
+    } catch (err: any) {
+      setIsExporting(false)
+      setError(`Frame extraction failed: ${err.message}`)
+    }
+  }
+  
+  const composeFromFrames = async () => {
+    try {
+      const frameDir = await window.clappper.selectDirectory()
+      if (!frameDir) return // User cancelled
+      
+      const outputPath = await window.clappper.savePath('composed_video.mp4')
+      if (!outputPath) return // User cancelled
+      
+      setIsExporting(true)
+      setError(null)
+      
+      const result = await window.clappper.composeVideo({
+        frameDir,
+        outputPath,
+        fps: 30,
+        pattern: 'frame_%06d.png'
+      })
+      
+      setIsExporting(false)
+      
+      if (result.ok) {
+        alert(`Video composed successfully:\n${result.outPath}`)
+        
+        // Optionally import the composed video
+        if (confirm('Import the composed video to timeline?')) {
+          const info = await window.clappper.ffprobe(result.outPath)
+          const dur = Number(info.format.duration) || 0
+          const v = info.streams.find((s) => s.codec_type === 'video')
+          
+          if (dur > 0 && v) {
+            useStore.getState().addClips([{
+              id: `clip_${Date.now()}`,
+              path: result.outPath,
+              name: result.outPath.split(/[/\\]/).pop() || result.outPath,
+              duration: dur,
+              width: v.width || 0,
+              height: v.height || 0,
+              start: 0,
+              end: dur,
+              trackId: 'main',
+              order: 0
+            }])
+          }
+        }
+      } else {
+        setError(`Video composition failed: ${'message' in result ? result.message : 'Unknown error'}`)
+      }
+    } catch (err: any) {
+      setIsExporting(false)
+      setError(`Video composition failed: ${err.message}`)
+    }
+  }
+  
   const saveProject = async () => {
     try {
       const savePath = await window.clappper.savePath('project.json')
@@ -337,6 +427,8 @@ export default function Toolbar() {
   }
 
   const allClips = useStore.getState().getAllClips()
+  const selectedId = useStore(s => s.selectedId)
+  const selectedClip = selectedId ? useStore.getState().getClipById(selectedId) : null
   const visibleOverlayCount = useStore(s => s.visibleOverlayCount)
   const setVisibleOverlayCount = useStore(s => s.setVisibleOverlayCount)
   const exportSettings = useStore(s => s.exportSettings)
@@ -351,6 +443,15 @@ export default function Toolbar() {
         <ScreenRecorder />
         <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export'}
+        </button>
+        <button onClick={() => setShowEnhanceModal(true)} disabled={isExporting || isImporting || !selectedClip || (selectedClip.height || 0) >= 720}>
+          Enhance
+        </button>
+        <button onClick={extractFrames} disabled={isExporting || isImporting || !selectedClip}>
+          Extract Frames
+        </button>
+        <button onClick={composeFromFrames} disabled={isExporting || isImporting}>
+          Compose Video
         </button>
         <button 
           onClick={clearAll} 
@@ -576,6 +677,12 @@ export default function Toolbar() {
           </div>
         </div>
       )}
+
+      {/* Enhance Modal */}
+      <EnhanceModal
+        isOpen={showEnhanceModal}
+        onClose={() => setShowEnhanceModal(false)}
+      />
     </div>
   )
 }

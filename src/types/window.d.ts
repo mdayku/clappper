@@ -65,6 +65,13 @@ declare global {
       onMenuLoadProject: (callback: () => void) => void
       getScreenSources: () => Promise<Array<{ id: string; name: string; thumbnail: string }>>
       saveRecording: (filePath: string, base64Data: string) => Promise<{ ok: boolean }>
+      enhanceVideo: (payload: { input: string; output: string }) => Promise<{ ok: boolean; outPath: string; outputWidth?: number; outputHeight?: number; scale?: number }>
+      enhanceCancel: () => Promise<{ ok: boolean; cancelled?: boolean; message?: string }>
+      detectGPU: () => Promise<{ detected: boolean; name: string; vram: string; estimatedFps: number }>
+      onEnhanceProgress: (callback: (progress: { stage: string; frame: number; totalFrames: number; percent: number; eta: string; outputResolution?: string; scale?: number; fps?: string }) => void) => void
+      extractFrames: (payload: { videoPath: string; outputDir: string; format?: string; fps?: number }) => Promise<{ ok: boolean; frameCount: number; outputDir: string } | { ok: false; message: string }>
+      composeVideo: (payload: { frameDir: string; outputPath: string; fps?: number; pattern?: string; audioPath?: string }) => Promise<{ ok: boolean; outPath: string } | { ok: false; message: string }>
+      selectDirectory: () => Promise<string | null>
     }
   }
 }

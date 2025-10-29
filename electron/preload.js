@@ -30,5 +30,12 @@ contextBridge.exposeInMainWorld('clappper', {
         ipcRenderer.on('menu:load-project', () => callback());
     },
     getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
-    saveRecording: (filePath, base64Data) => ipcRenderer.invoke('screen:save-recording', { filePath, base64Data })
+    saveRecording: (filePath, base64Data) => ipcRenderer.invoke('screen:save-recording', { filePath, base64Data }),
+    enhanceVideo: (payload) => ipcRenderer.invoke('ai:enhance', payload),
+    enhanceCancel: () => ipcRenderer.invoke('ai:enhance:cancel'),
+    detectGPU: () => ipcRenderer.invoke('ai:detect-gpu'),
+    onEnhanceProgress: (cb) => {
+        ipcRenderer.removeAllListeners('ai:enhance:progress');
+        ipcRenderer.on('ai:enhance:progress', (_e, progress) => cb(progress));
+    }
 });

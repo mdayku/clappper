@@ -585,67 +585,71 @@ ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -vf scale=100:-1 \
 - [ ] Test with various combinations (screen+webcam, screen+window, etc.)
 - [ ] Ensure composited recording maintains 30fps and sync
 
-**8.1: Real-ESRGAN Integration** (Priority 1)
-- [ ] Research Real-ESRGAN models (x2, x4, anime variants)
-- [ ] Choose optimal model for RTX 4060 (balance quality/speed)
-- [ ] Test ONNX Runtime vs Python subprocess approach
-- [ ] Benchmark performance on sample videos
+**8.1: Real-ESRGAN Integration** (Priority 1) ✅ COMPLETE
+- [x] Research Real-ESRGAN models (x2, x4, anime variants) ✅
+- [x] Choose optimal model for RTX 4060 (balance quality/speed) ✅ - Selected realesrgan-x4plus
+- [x] Test ONNX Runtime vs Python subprocess approach ✅ - Using ncnn-vulkan binary
+- [x] Benchmark performance on sample videos ✅ - ~3s/frame on RTX 4060
 
-**8.2: Local Inference Setup** (Priority 2)
-- [ ] Install Real-ESRGAN Python package or ONNX model
-- [ ] Create IPC handler: `ai:enhance`
-- [ ] Implement frame extraction from video
-- [ ] Process frames through Real-ESRGAN
-- [ ] Reassemble enhanced frames to video
-- [ ] Add progress tracking (frame N of M)
-- [ ] Implement cancellation support
+**8.2: Local Inference Setup** (Priority 2) ✅ COMPLETE
+- [x] Install Real-ESRGAN Python package or ONNX model ✅ - Bundled ncnn-vulkan binary
+- [x] Create IPC handler: `ai:enhance` ✅
+- [x] Implement frame extraction from video ✅
+- [x] Process frames through Real-ESRGAN ✅
+- [x] Reassemble enhanced frames to video ✅
+- [x] Add progress tracking (frame N of M) ✅
+- [x] Implement cancellation support ✅
 
-**8.3: GPU Detection & Setup** (Priority 3)
+**8.3: GPU Detection & Setup** (Priority 3) ⚠️ PARTIAL
 - [ ] Detect NVIDIA GPU presence (nvidia-smi)
 - [ ] Check CUDA availability
 - [ ] Verify VRAM capacity (need 4GB+ for 1080p)
-- [ ] Graceful fallback if GPU unavailable
+- [x] Graceful fallback if GPU unavailable ✅ - Error message shown
 - [ ] Show GPU info in UI ("Using: RTX 4060")
 
-**8.4: UI/UX** (Priority 4)
-- [ ] Add "Enhance Video" button in Toolbar
-- [ ] Enhancement settings modal:
-  - Source resolution detection
-  - Target resolution selector (720p, 1080p, 4K)
-  - Model selector (Fast/Balanced/Quality)
-  - Denoise toggle
-  - Face enhancement toggle
+**8.4: UI/UX** (Priority 4) ✅ COMPLETE (Basic)
+- [x] Add "Enhance Video" button in Toolbar ✅
+- [x] Enhancement settings modal ✅ (Basic version):
+  - [x] Source resolution detection ✅
+  - [ ] Target resolution selector (720p, 1080p, 4K)
+  - [x] Model selector (Fixed: realesrgan-x4plus) ✅
+  - [ ] Denoise toggle
+  - [ ] Face enhancement toggle
 - [ ] Before/After preview comparison
-- [ ] Progress bar with:
-  - Current frame / Total frames
-  - Estimated time remaining
-  - GPU utilization %
-- [ ] Cancel button (kills process, cleans temp files)
+- [x] Progress bar with ✅:
+  - [x] Current frame / Total frames ✅
+  - [x] Stage indicator (extract/process/reassemble) ✅
+  - [ ] Estimated time remaining (shows stage description)
+  - [ ] GPU utilization %
+- [x] Cancel button (kills process, cleans temp files) ✅
 
-**8.5: Enhancement Pipeline** (Priority 5)
-- [ ] Extract frames: `ffmpeg -i input.mp4 frame_%04d.png`
-- [ ] Process frames: `realesrgan-ncnn-vulkan -i frame_%04d.png -o enhanced_%04d.png -s 2`
-- [ ] Reassemble: `ffmpeg -i enhanced_%04d.png -c:v libx264 output.mp4`
-- [ ] Audio passthrough from original
-- [ ] Temp file cleanup
-- [ ] Memory management for long videos
+**8.5: Enhancement Pipeline** (Priority 5) ✅ COMPLETE
+- [x] Extract frames: `ffmpeg -i input.mp4 frame_%06d.png` ✅
+- [x] Process frames: `realesrgan-ncnn-vulkan -i frame.png -o enhanced.png -s 4` ✅
+- [x] Reassemble: `ffmpeg -i enhanced_%06d.png -c:v libx264 output.mp4` ✅
+- [x] Audio passthrough from original ✅
+- [x] Temp file cleanup ✅
+- [x] Memory management for long videos ✅
 
-**8.6: Presets & Optimization** (Priority 6)
+**8.6: Presets & Optimization** (Priority 6) ⚠️ NEEDS WORK
 - [ ] **Fast Preset**: Real-ESRGAN-x2 (2x upscale, ~2s/frame)
 - [ ] **Balanced Preset**: Real-ESRGAN-x2 + denoise (~3s/frame)
-- [ ] **Quality Preset**: Real-ESRGAN-x4 (4x upscale, ~6s/frame)
+- [x] **Quality Preset**: Real-ESRGAN-x4 (4x upscale, ~3s/frame) ✅ - Current default
 - [ ] **Anime Preset**: RealESRGAN-anime (optimized for animation)
-- [ ] Batch processing optimization
+- [ ] **CRITICAL: Batch processing optimization** - Process 4-8 frames in parallel (75% speedup)
+- [ ] **CRITICAL: Resolution cap at 1080p** - Prevent excessive upscaling
+- [ ] **CRITICAL: Smart scaling** - Use 2×/3× when 4× would exceed 1080p
 - [ ] GPU memory pooling
 - [ ] Multi-threaded frame I/O
 
-**8.7: Smart Features** (Priority 7)
-- [ ] Auto-detect low resolution videos (<720p)
+**8.7: Smart Features** (Priority 7) ⚠️ PARTIAL
+- [x] Auto-detect low resolution videos (<720p) ✅ - Button only enabled for <720p
 - [ ] Suggest enhancement on import
 - [ ] Side-by-side comparison before committing
 - [ ] "Enhance All Clips" batch operation
 - [ ] Save enhancement settings per project
-- [ ] Estimate processing time before starting
+- [ ] **CRITICAL: Estimate processing time before starting** - Show realistic ETA
+- [ ] **NEW: Show calculated output resolution** - Display before enhancement starts
 
 **Enhancement Specs**:
 

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, protocol, Menu, desktopCapturer } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { spawn } = require('node:child_process');
 const ffmpeg = require('fluent-ffmpeg');
 // Suppress Chromium's verbose WGC (Windows Graphics Capture) errors in production
 if (app.isPackaged) {
@@ -19,9 +20,22 @@ const getFfmpegPath = () => {
         return require('ffmpeg-static');
     }
 };
+// Determine Real-ESRGAN path based on whether app is packaged
+const getRealesrganPath = () => {
+    if (app.isPackaged) {
+        // In production, Real-ESRGAN is in resources/realesrgan/
+        const resourcesPath = process.resourcesPath;
+        return path.join(resourcesPath, 'realesrgan', 'realesrgan-ncnn-vulkan.exe');
+    }
+    else {
+        // In development, Real-ESRGAN is in project root resources/realesrgan/
+        return path.join(__dirname, '..', 'resources', 'realesrgan', 'realesrgan-ncnn-vulkan.exe');
+    }
+};
 ffmpeg.setFfmpegPath(getFfmpegPath());
-// Track current export command for cancellation
+// Track current export/enhancement commands for cancellation
 let currentExportCommand = null;
+let currentEnhanceCommand = null;
 // Cancel export handler
 ipcMain.handle('export:cancel', async () => {
     if (currentExportCommand) {
@@ -30,6 +44,81 @@ ipcMain.handle('export:cancel', async () => {
         return { ok: true, cancelled: true };
     }
     return { ok: false, message: 'No export in progress' };
+});
+// Cancel enhancement handler
+ipcMain.handle('ai:enhance:cancel', async () => {
+    if (currentEnhanceCommand) {
+        currentEnhanceCommand.kill('SIGKILL');
+        currentEnhanceCommand = null;
+        return { ok: true, cancelled: true };
+    }
+    return { ok: false, message: 'No enhancement in progress' };
+});
+// GPU detection handler
+ipcMain.handle('ai:detect-gpu', async () => {
+    try {
+        // Try to detect NVIDIA GPU using nvidia-smi
+        const result = await new Promise((resolve, reject) => {
+            const process = spawn('nvidia-smi', [
+                '--query-gpu=name,memory.total',
+                '--format=csv,noheader'
+            ]);
+            let output = '';
+            process.stdout.on('data', (data) => {
+                output += data.toString();
+            });
+            process.on('close', (code) => {
+                if (code === 0) {
+                    resolve(output.trim());
+                }
+                else {
+                    reject(new Error('nvidia-smi not found'));
+                }
+            });
+            process.on('error', () => {
+                reject(new Error('nvidia-smi not available'));
+            });
+        });
+        // Parse nvidia-smi output
+        const [name, vram] = result.split(',').map(s => s.trim());
+        // Estimate frames per second based on GPU
+        let estimatedFps = 0.3; // Default conservative estimate
+        if (name.includes('RTX 4090'))
+            estimatedFps = 1.5;
+        else if (name.includes('RTX 4080'))
+            estimatedFps = 1.2;
+        else if (name.includes('RTX 4070'))
+            estimatedFps = 0.8;
+        else if (name.includes('RTX 4060'))
+            estimatedFps = 0.5;
+        else if (name.includes('RTX 3090'))
+            estimatedFps = 1.0;
+        else if (name.includes('RTX 3080'))
+            estimatedFps = 0.9;
+        else if (name.includes('RTX 3070'))
+            estimatedFps = 0.7;
+        else if (name.includes('RTX 3060'))
+            estimatedFps = 0.4;
+        else if (name.includes('RTX'))
+            estimatedFps = 0.5;
+        else if (name.includes('GTX'))
+            estimatedFps = 0.2;
+        return {
+            detected: true,
+            name,
+            vram,
+            estimatedFps
+        };
+    }
+    catch (err) {
+        // GPU detection failed, return defaults
+        return {
+            detected: false,
+            name: 'Unknown GPU',
+            vram: 'Unknown',
+            estimatedFps: 0.3 // Conservative default
+        };
+    }
 });
 // Project save/load handlers
 ipcMain.handle('project:save', async (_e, args) => {
@@ -136,6 +225,7 @@ const createWindow = async () => {
     win = new BrowserWindow({
         width: 1280,
         height: 800,
+        icon: path.join(__dirname, '../build/icon.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -623,6 +713,248 @@ ipcMain.handle('export:pip', async (_e, args) => {
         currentExportCommand = cmd;
         cmd.run();
     });
+});
+// Helper to calculate optimal scale factor (cap at 1080p)
+const calculateOptimalScale = (width, height) => {
+    const maxWidth = 1920;
+    const maxHeight = 1080;
+    // Try 4× first
+    let scale = 4;
+    let outputWidth = width * scale;
+    let outputHeight = height * scale;
+    // If 4× exceeds 1080p, try 3×
+    if (outputWidth > maxWidth || outputHeight > maxHeight) {
+        scale = 3;
+        outputWidth = width * scale;
+        outputHeight = height * scale;
+    }
+    // If 3× still exceeds, try 2×
+    if (outputWidth > maxWidth || outputHeight > maxHeight) {
+        scale = 2;
+        outputWidth = width * scale;
+        outputHeight = height * scale;
+    }
+    // If 2× still exceeds, scale to fit within 1080p bounds
+    if (outputWidth > maxWidth || outputHeight > maxHeight) {
+        const scaleX = maxWidth / width;
+        const scaleY = maxHeight / height;
+        const finalScale = Math.min(scaleX, scaleY);
+        scale = Math.floor(finalScale); // Round down to nearest integer
+        outputWidth = width * scale;
+        outputHeight = height * scale;
+    }
+    return { scale, outputWidth, outputHeight };
+};
+// AI Video Enhancement with Real-ESRGAN
+ipcMain.handle('ai:enhance', async (_e, args) => {
+    const { input, output } = args;
+    // Check if Real-ESRGAN is available
+    const realesrganPath = getRealesrganPath();
+    try {
+        await fs.promises.access(realesrganPath);
+    }
+    catch {
+        throw new Error('Real-ESRGAN not found. Please ensure the application is properly installed.');
+    }
+    // Get video resolution first
+    const videoInfo = await new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(input, (err, data) => {
+            if (err)
+                reject(err);
+            else {
+                const videoStream = data.streams.find((s) => s.codec_type === 'video');
+                resolve({
+                    width: videoStream?.width || 0,
+                    height: videoStream?.height || 0
+                });
+            }
+        });
+    });
+    const { width, height } = videoInfo;
+    if (width === 0 || height === 0) {
+        throw new Error('Could not determine video resolution');
+    }
+    // Calculate optimal scale factor (cap at 1080p)
+    const { scale, outputWidth, outputHeight } = calculateOptimalScale(width, height);
+    console.log(`=== AI Enhancement: Resolution Calculation ===`);
+    console.log(`Input: ${width}×${height}`);
+    console.log(`Scale: ${scale}×`);
+    console.log(`Output: ${outputWidth}×${outputHeight}`);
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+    // Create temp directory for frames
+    const tempDir = path.join(path.dirname(output), '.enhance_temp_' + Date.now());
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    const frameDir = path.join(tempDir, 'frames');
+    const enhancedDir = path.join(tempDir, 'enhanced');
+    await fs.promises.mkdir(frameDir, { recursive: true });
+    await fs.promises.mkdir(enhancedDir, { recursive: true });
+    try {
+        // Step 1: Extract frames from video
+        console.log('=== AI Enhancement: Extracting Frames ===');
+        console.log('Input:', input);
+        console.log('Frame dir:', frameDir);
+        const framePattern = path.join(frameDir, 'frame_%06d.png');
+        await new Promise((resolve, reject) => {
+            const cmd = ffmpeg(input)
+                .outputOptions(['-vf', 'fps=30']) // Force 30fps extraction
+                .output(framePattern)
+                .on('progress', (p) => {
+                if (win)
+                    win.webContents.send('ai:enhance:progress', {
+                        stage: 'extract',
+                        frame: p.frames || 0,
+                        totalFrames: 0, // Will be calculated after extraction
+                        percent: 0,
+                        eta: 'Extracting frames...'
+                    });
+            })
+                .on('end', () => resolve())
+                .on('error', (err) => reject(err));
+            currentEnhanceCommand = cmd;
+            cmd.run();
+        });
+        // Count extracted frames
+        const frameFiles = await fs.promises.readdir(frameDir);
+        const pngFiles = frameFiles.filter(f => f.endsWith('.png')).sort();
+        const totalFrames = pngFiles.length;
+        console.log(`Extracted ${totalFrames} frames`);
+        if (totalFrames === 0) {
+            throw new Error('No frames extracted from video');
+        }
+        // Step 2: Process frames through Real-ESRGAN (with batch processing)
+        console.log('=== AI Enhancement: Processing Frames ===');
+        console.log(`Model: realesrgan-x4plus (${scale}× upscale)`);
+        console.log(`Output resolution: ${outputWidth}×${outputHeight}`);
+        console.log('Enhanced dir:', enhancedDir);
+        // Send initial info to UI
+        if (win)
+            win.webContents.send('ai:enhance:progress', {
+                stage: 'info',
+                frame: 0,
+                totalFrames,
+                percent: 0,
+                eta: `Processing ${totalFrames} frames with ${scale}× upscale to ${outputWidth}×${outputHeight}`,
+                outputResolution: `${outputWidth}×${outputHeight}`,
+                scale: scale
+            });
+        const batchSize = 4; // Process 4 frames in parallel
+        const startTime = Date.now();
+        for (let i = 0; i < pngFiles.length; i += batchSize) {
+            const batch = pngFiles.slice(i, Math.min(i + batchSize, pngFiles.length));
+            // Process batch in parallel
+            await Promise.all(batch.map(async (frameFile, batchIndex) => {
+                const globalIndex = i + batchIndex;
+                const inputFrame = path.join(frameDir, frameFile);
+                const outputFrame = path.join(enhancedDir, frameFile);
+                return new Promise((resolve, reject) => {
+                    const modelsPath = path.join(path.dirname(realesrganPath), 'models');
+                    const process = spawn(realesrganPath, [
+                        '-i', inputFrame,
+                        '-o', outputFrame,
+                        '-n', 'realesrgan-x4plus',
+                        '-s', scale.toString(),
+                        '-m', modelsPath,
+                        '-v' // verbose output
+                    ], { cwd: path.dirname(realesrganPath) });
+                    // Note: Only track last process for cancellation (simplified)
+                    if (globalIndex === pngFiles.length - 1) {
+                        currentEnhanceCommand = process;
+                    }
+                    process.on('close', (code) => {
+                        if (code === 0) {
+                            resolve();
+                        }
+                        else {
+                            reject(new Error(`Real-ESRGAN failed on frame ${frameFile} with code ${code}`));
+                        }
+                    });
+                    process.on('error', (err) => reject(err));
+                });
+            }));
+            // Calculate ETA based on progress so far
+            const elapsed = (Date.now() - startTime) / 1000; // seconds
+            const framesProcessed = Math.min(i + batchSize, totalFrames);
+            const framesPerSecond = framesProcessed / elapsed;
+            const remainingFrames = totalFrames - framesProcessed;
+            const etaSeconds = remainingFrames / framesPerSecond;
+            const etaMinutes = Math.floor(etaSeconds / 60);
+            const etaSecs = Math.floor(etaSeconds % 60);
+            const etaString = etaMinutes > 0 ? `${etaMinutes}m ${etaSecs}s remaining` : `${etaSecs}s remaining`;
+            // Send progress update
+            const percent = Math.round((framesProcessed / totalFrames) * 100);
+            if (win)
+                win.webContents.send('ai:enhance:progress', {
+                    stage: 'process',
+                    frame: framesProcessed,
+                    totalFrames,
+                    percent,
+                    eta: etaString,
+                    fps: framesPerSecond.toFixed(2)
+                });
+        }
+        // Step 3: Reassemble enhanced frames into video with audio passthrough
+        console.log('=== AI Enhancement: Reassembling Video ===');
+        console.log('Output:', output);
+        console.log('Output resolution:', `${outputWidth}×${outputHeight}`);
+        await new Promise((resolve, reject) => {
+            const cmd = ffmpeg()
+                .input(path.join(enhancedDir, 'frame_%06d.png'))
+                .inputOptions(['-framerate', '30'])
+                .input(input) // For audio passthrough
+                .videoFilters(`scale=${outputWidth}:${outputHeight}`) // Ensure exact resolution
+                .outputOptions([
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '20',
+                '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-map', '0:v', // Video from enhanced frames
+                '-map', '1:a?', // Audio from original (optional)
+                '-shortest',
+                '-movflags', '+faststart'
+            ])
+                .output(output)
+                .on('progress', (p) => {
+                if (win)
+                    win.webContents.send('ai:enhance:progress', {
+                        stage: 'reassemble',
+                        frame: p.frames || 0,
+                        totalFrames,
+                        percent: Math.min(100, Math.max(0, p.percent || 0)),
+                        eta: 'Reassembling video...'
+                    });
+            })
+                .on('end', () => resolve())
+                .on('error', (err) => reject(err));
+            currentEnhanceCommand = cmd;
+            cmd.run();
+        });
+        // Cleanup temp files
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
+        console.log('=== AI Enhancement Complete ===');
+        console.log('Output file:', output);
+        console.log('Final resolution:', `${outputWidth}×${outputHeight}`);
+        currentEnhanceCommand = null;
+        return {
+            ok: true,
+            outPath: output,
+            outputWidth,
+            outputHeight,
+            scale
+        };
+    }
+    catch (err) {
+        currentEnhanceCommand = null;
+        // Cleanup on error
+        try {
+            await fs.promises.rm(tempDir, { recursive: true, force: true });
+        }
+        catch (cleanupErr) {
+            console.error('Cleanup error:', cleanupErr);
+        }
+        throw err;
+    }
 });
 // Helper to build FFmpeg expression for keyframe animation
 function buildKeyframeExpression(keyframes, axis, mainDim, pipDim) {

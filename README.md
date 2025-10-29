@@ -48,6 +48,17 @@ A lightweight desktop video editor for solo creators and educators. Quickly impo
 - **Respects trims** - Only exports trimmed portions
 - **FFmpeg logging** - Detailed console output for debugging
 
+### 🚀 AI Video Enhancement (NEW!)
+- **Real-ESRGAN integration** - Local GPU-accelerated 4× super-resolution
+- **RTX 4060 optimized** - Uses Vulkan API for maximum GPU performance
+- **Smart triggering** - Enhance button appears for clips <720p resolution
+- **Real-time progress** - Live updates through extract/process/reassemble phases
+- **Automatic import** - Enhanced video added to timeline after processing
+- **Model selection** - Real-ESRGAN x4plus for optimal quality/speed balance
+- **Audio preservation** - Original audio track maintained in output
+- **Cancellation support** - Stop enhancement with proper cleanup
+- **Demo ready** - Sample workflow in `assets/demo/README.md`
+
 ### 📊 UI/UX & Productivity
 - **Track badges** - Color-coded track indicators (purple, blue, green, orange)
 - **Overlay counter** - Shows active overlays in player

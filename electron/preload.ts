@@ -40,7 +40,19 @@ contextBridge.exposeInMainWorld('clappper', {
     ipcRenderer.on('menu:load-project', () => callback())
   },
   getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
-  saveRecording: (filePath: string, base64Data: string) => 
-    ipcRenderer.invoke('screen:save-recording', { filePath, base64Data })
+  saveRecording: (filePath: string, base64Data: string) =>
+    ipcRenderer.invoke('screen:save-recording', { filePath, base64Data }),
+  enhanceVideo: (payload: { input: string; output: string }) => ipcRenderer.invoke('ai:enhance', payload),
+  enhanceCancel: () => ipcRenderer.invoke('ai:enhance:cancel'),
+  detectGPU: () => ipcRenderer.invoke('ai:detect-gpu'),
+  onEnhanceProgress: (cb: (progress: any) => void) => {
+    ipcRenderer.removeAllListeners('ai:enhance:progress')
+    ipcRenderer.on('ai:enhance:progress', (_e: any, progress: any) => cb(progress))
+  },
+  extractFrames: (payload: { videoPath: string; outputDir: string; format?: string; fps?: number }) => 
+    ipcRenderer.invoke('video:extract-frames', payload),
+  composeVideo: (payload: { frameDir: string; outputPath: string; fps?: number; pattern?: string; audioPath?: string }) => 
+    ipcRenderer.invoke('video:compose-from-frames', payload),
+  selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory')
 })
 

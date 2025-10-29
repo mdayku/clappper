@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#2563eb" opacity="0.1"/>
+  
+  <!-- Clapper board base -->
+  <rect x="100" y="240" width="312" height="180" rx="8" fill="#1e293b" stroke="#334155" stroke-width="4"/>
+  
+  <!-- Clapper board top (closed position) -->
+  <g>
+    <!-- Top board -->
+    <path d="M 100 240 L 412 240 L 390 180 L 80 180 Z" fill="#f1f5f9" stroke="#334155" stroke-width="4"/>
+    
+    <!-- Black stripes on top -->
+    <path d="M 130 180 L 150 180 L 160 240 L 140 240 Z" fill="#1e293b"/>
+    <path d="M 190 180 L 210 180 L 220 240 L 200 240 Z" fill="#1e293b"/>
+    <path d="M 250 180 L 270 180 L 280 240 L 260 240 Z" fill="#1e293b"/>
+    <path d="M 310 180 L 330 180 L 340 240 L 320 240 Z" fill="#1e293b"/>
+    <path d="M 370 180 L 390 180 L 380 240 L 360 240 Z" fill="#1e293b"/>
+  </g>
+  
+  <!-- Hinge -->
+  <rect x="90" y="220" width="30" height="30" rx="4" fill="#64748b" stroke="#334155" stroke-width="2"/>
+  
+  <!-- Text area on board -->
+  <rect x="130" y="280" width="252" height="100" rx="4" fill="#334155" opacity="0.3"/>
+  
+  <!-- Play button symbol -->
+  <circle cx="256" cy="330" r="35" fill="#2563eb" opacity="0.9"/>
+  <path d="M 246 315 L 246 345 L 271 330 Z" fill="white"/>
+  
+  <!-- Accent line -->
+  <line x1="130" y1="390" x2="382" y2="390" stroke="#2563eb" stroke-width="3" stroke-linecap="round"/>
+</svg>
+
