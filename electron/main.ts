@@ -1654,16 +1654,16 @@ ipcMain.handle('room:detect', async (_e: any, imagePath: string, modelId?: strin
       let stdout = '';
       let stderr = '';
 
-      pythonProcess.stdout.on('data', (data) => {
+      pythonProcess.stdout.on('data', (data: Buffer) => {
         stdout += data.toString();
       });
 
-      pythonProcess.stderr.on('data', (data) => {
+      pythonProcess.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
         console.error(`[ROOM DETECTION STDERR] ${data.toString()}`);
       });
 
-      pythonProcess.on('close', (code) => {
+      pythonProcess.on('close', (code: number | null) => {
         if (code !== 0) {
           console.error(`[ROOM DETECTION] Python process exited with code ${code}`);
           console.error(`[ROOM DETECTION] stderr: ${stderr}`);
