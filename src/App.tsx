@@ -12,12 +12,15 @@ export default function App() {
   const [autosavePath, setAutosavePath] = React.useState<string>('')
   
   // Check for autosave on mount and offer to restore
+  // TEMPORARILY DISABLED to test if autosave is causing room detection to show
   useEffect(() => {
     const checkAndRestore = async () => {
       const path = await window.clappper.getAutosavePath()
       setAutosavePath(path)
       console.log('Autosave path:', path)
       
+      // TEMPORARILY DISABLED - uncomment to re-enable autosave restore
+      /*
       const { exists, path: autosaveFile } = await window.clappper.checkAutosave()
       if (exists && autosaveFile) {
         const shouldRestore = confirm(
@@ -28,13 +31,14 @@ export default function App() {
           try {
             const { ok, state } = await window.clappper.loadProject(autosaveFile)
             if (ok && state) {
-              // Restore state to store
-              store.tracks = state.tracks || store.tracks
-              store.selectedId = state.selectedId || null
-              store.playhead = state.playhead || 0
-              store.pipSettings = state.pipSettings || store.pipSettings
-              store.exportSettings = state.exportSettings || store.exportSettings
-              store.visibleOverlayCount = state.visibleOverlayCount ?? store.visibleOverlayCount
+              // Restore state to store - only restore valid state
+              // Ensure we don't restore any UI state that might cause issues
+              if (state.tracks) store.tracks = state.tracks
+              if (state.selectedId !== undefined) store.selectedId = state.selectedId || null
+              if (state.playhead !== undefined) store.playhead = state.playhead || 0
+              if (state.pipSettings) store.pipSettings = state.pipSettings
+              if (state.exportSettings) store.exportSettings = state.exportSettings
+              if (state.visibleOverlayCount !== undefined) store.visibleOverlayCount = state.visibleOverlayCount ?? store.visibleOverlayCount
               
               console.log('Session restored from', new Date(state.timestamp).toLocaleString())
               alert('Session restored successfully!')
@@ -45,6 +49,7 @@ export default function App() {
           }
         }
       }
+      */
     }
     
     checkAndRestore()

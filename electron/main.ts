@@ -9,29 +9,57 @@ const ffmpeg = require('fluent-ffmpeg')
 app.commandLine.appendSwitch('disable-logging')
 app.commandLine.appendSwitch('log-level', '3') // Only show fatal errors
 
-// Determine ffmpeg path based on whether app is packaged
+// --- FFMPEG / FFPROBE PATHS (dev vs packaged) -------------------------------
+const ffprobeStatic = require('ffprobe-static');
+
 const getFfmpegPath = () => {
   if (app.isPackaged) {
-    // In production, ffmpeg is in resources/ffmpeg/
-    const resourcesPath = (process as any).resourcesPath
-    return path.join(resourcesPath, 'ffmpeg', 'ffmpeg.exe')
+    const resourcesPath = (process as any).resourcesPath;
+    return path.join(
+      resourcesPath,
+      'ffmpeg',
+      process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+    );
   } else {
-    // In development, use ffmpeg-static from node_modules
-    return require('ffmpeg-static')
+    // dev: from node_modules
+    return require('ffmpeg-static');
   }
-}
+};
 
-// Determine Real-ESRGAN path based on whether app is packaged
-const getRealesrganPath = () => {
+const getFfprobePath = () => {
   if (app.isPackaged) {
-    // In production, Real-ESRGAN is in resources/realesrgan/
-    const resourcesPath = (process as any).resourcesPath
-    return path.join(resourcesPath, 'realesrgan', 'realesrgan-ncnn-vulkan.exe')
+    const resourcesPath = (process as any).resourcesPath;
+    return path.join(
+      resourcesPath,
+      'ffprobe',
+      process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
+    );
   } else {
-    // In development, Real-ESRGAN is in project root resources/realesrgan/
-    return path.join(__dirname, '..', 'resources', 'realesrgan', 'realesrgan-ncnn-vulkan.exe')
+    // dev: from node_modules
+    return ffprobeStatic.path;
   }
-}
+};
+
+// Register with fluent-ffmpeg BEFORE any ffprobe()/encode calls
+ffmpeg.setFfmpegPath(getFfmpegPath());
+ffmpeg.setFfprobePath(getFfprobePath());
+
+// --- Real-ESRGAN PATH (dev vs packaged) -------------------------------------
+const getRealesrganPath = () => {
+  const binName =
+    process.platform === 'win32'
+      ? 'realesrgan-ncnn-vulkan.exe'
+      : 'realesrgan-ncnn-vulkan'; // macOS/Linux have no .exe
+
+  if (app.isPackaged) {
+    // e.g. C:\Users\<you>\AppData\Local\clappper\resources\realesrgan\realesrgan-ncnn-vulkan.exe
+    const resourcesPath = (process as any).resourcesPath;
+    return path.join(resourcesPath, 'realesrgan', binName);
+  } else {
+    // dev: <repo>/resources/realesrgan/realesrgan-ncnn-vulkan(.exe)
+    return path.join(__dirname, '..', 'resources', 'realesrgan', binName);
+  }
+};
 
 ffmpeg.setFfmpegPath(getFfmpegPath())
 
@@ -373,6 +401,17 @@ ipcMain.handle('dialog:openFiles', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'mkv', 'avi'] }]
+  })
+  return canceled ? [] : filePaths
+})
+
+ipcMain.handle('dialog:openImageFiles', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
   })
   return canceled ? [] : filePaths
 })
@@ -1454,6 +1493,230 @@ ipcMain.handle('filter:moveFolder', async (_e: any, sourcePath: string, destPath
   } catch (err) {
     console.error('Failed to move folder:', err)
     throw err
+  }
+})
+
+// ========== ROOM DETECTION HANDLER ==========
+
+const getRoomDetectionPythonPath = () => {
+  if (app.isPackaged) {
+    const resourcesPath = (process as any).resourcesPath;
+    return path.join(resourcesPath, 'room-detection', 'inference.py');
+  } else {
+    return path.join(__dirname, '..', 'resources', 'room-detection', 'inference.py');
+  }
+};
+
+const getRoomDetectionModelPath = () => {
+  // Models should be in the Roomer repo, not bundled with Electron
+  // User needs to point to the Roomer repo location
+  const roomerPath = process.env.ROOMER_PATH || path.join(process.env.HOME || process.env.USERPROFILE || '', 'Roomer');
+  return path.join(roomerPath, 'room_detection_training', 'local_training_output', 'yolo-v8l-200epoch', 'weights', 'best.pt');
+};
+
+const getRoomDetectionModelsPath = () => {
+  // Optional: Check for local training output if user has Roomer repo
+  // But don't require it - bundled models are primary
+  const roomerPath = process.env.ROOMER_PATH || path.join(process.env.HOME || process.env.USERPROFILE || '', 'Roomer');
+  return path.join(roomerPath, 'room_detection_training', 'local_training_output');
+};
+
+const getBundledModelsPath = () => {
+  if (app.isPackaged) {
+    const resourcesPath = (process as any).resourcesPath;
+    return path.join(resourcesPath, 'room-models');
+  } else {
+    return path.join(__dirname, '..', 'resources', 'room-models');
+  }
+};
+
+// Helper to check if a model exists and add it to the list
+const checkAndAddModel = async (
+  models: Array<{ id: string; name: string; path: string }>,
+  modelId: string,
+  basePath: string
+) => {
+  const weightsPath = path.join(basePath, modelId, 'weights', 'best.pt');
+  if (await fs.promises.access(weightsPath).then(() => true).catch(() => false)) {
+    // Check if we already added this model (avoid duplicates)
+    if (!models.find(m => m.id === modelId)) {
+      models.push({
+        id: modelId,
+        name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        path: weightsPath
+      });
+    }
+    return true;
+  }
+  
+  // Check alternative structure: modelId/room_detection/weights/best.pt
+  const altWeightsPath = path.join(basePath, modelId, 'room_detection', 'weights', 'best.pt');
+  if (await fs.promises.access(altWeightsPath).then(() => true).catch(() => false)) {
+    if (!models.find(m => m.id === modelId)) {
+      models.push({
+        id: modelId,
+        name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        path: altWeightsPath
+      });
+    }
+    return true;
+  }
+  
+  return false;
+};
+
+// List available models from both bundled resources and local_training_output folder
+ipcMain.handle('room:listModels', async () => {
+  try {
+    const models: Array<{ id: string; name: string; path: string }> = [];
+    
+    // First, check bundled models (included with the app)
+    const bundledModelsPath = getBundledModelsPath();
+    if (await fs.promises.access(bundledModelsPath).then(() => true).catch(() => false)) {
+      const entries = await fs.promises.readdir(bundledModelsPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          await checkAndAddModel(models, entry.name, bundledModelsPath);
+        }
+      }
+    }
+    
+    // Then, check local training output (user's trained models)
+    const localModelsPath = getRoomDetectionModelsPath();
+    if (await fs.promises.access(localModelsPath).then(() => true).catch(() => false)) {
+      const entries = await fs.promises.readdir(localModelsPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          await checkAndAddModel(models, entry.name, localModelsPath);
+        }
+      }
+    }
+    
+    // Sort models by name
+    models.sort((a, b) => a.name.localeCompare(b.name));
+    
+    return models;
+  } catch (err) {
+    console.error('Failed to list models:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('room:detect', async (_e: any, imagePath: string, modelId?: string) => {
+  try {
+    // Read image file
+    const imageBuffer = await fs.promises.readFile(imagePath);
+    
+    // Find Python executable
+    const venvPython = process.platform === 'win32'
+      ? path.join(process.cwd(), '.venv', 'Scripts', 'python.exe')
+      : path.join(process.cwd(), '.venv', 'bin', 'python3');
+    
+    const pythonPath = (await fs.promises.access(venvPython).then(() => true).catch(() => false))
+      ? venvPython
+      : (process.platform === 'win32' ? 'python' : 'python3');
+    
+    // Get inference script path
+    const inferenceScriptPath = getRoomDetectionPythonPath();
+    
+    // Check if script exists
+    if (!(await fs.promises.access(inferenceScriptPath).then(() => true).catch(() => false))) {
+      throw new Error(`Room detection script not found at: ${inferenceScriptPath}`);
+    }
+    
+    // Set working directory - use current directory (app directory)
+    // No longer requires Roomer repo - models are bundled with the app
+    const cwd = process.cwd();
+    
+    // Get bundled models path for Python script
+    const bundledModelsPath = getBundledModelsPath();
+    
+    return new Promise((resolve, reject) => {
+      const modelIdStr = modelId || 'default';
+      const modelIdBytes = Buffer.from(modelIdStr, 'utf-8');
+      
+      // Send: [4 bytes: model ID length][model ID bytes][image buffer]
+      const modelIdLength = Buffer.allocUnsafe(4);
+      modelIdLength.writeUInt32BE(modelIdBytes.length, 0);
+
+      // Pass bundled models path as environment variable
+      const env = {
+        ...process.env,
+        BUNDLED_MODELS_PATH: bundledModelsPath
+      };
+
+      const pythonProcess = spawn(pythonPath, [inferenceScriptPath], {
+        cwd: cwd,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: env
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      pythonProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        stderr += data.toString();
+        console.error(`[ROOM DETECTION STDERR] ${data.toString()}`);
+      });
+
+      pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+          console.error(`[ROOM DETECTION] Python process exited with code ${code}`);
+          console.error(`[ROOM DETECTION] stderr: ${stderr}`);
+          reject(new Error(`Room detection failed: ${stderr || 'Unknown error'}`));
+          return;
+        }
+
+        try {
+          // YOLO prints progress messages to stdout, so extract only the JSON
+          const lines = stdout.trim().split('\n');
+          let jsonLine = '';
+          
+          // Find the last line that starts with '{' (our JSON response)
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (line.startsWith('{')) {
+              jsonLine = lines.slice(i).join('\n');
+              break;
+            }
+          }
+          
+          const jsonText = jsonLine || stdout;
+          const result = JSON.parse(jsonText);
+          
+          if (result.error) {
+            reject(new Error(result.error));
+            return;
+          }
+          
+          resolve({
+            success: true,
+            detections: result.detections || [],
+            annotated_image: result.annotated_image || null
+          });
+        } catch (parseError) {
+          console.error(`[ROOM DETECTION] Failed to parse output`);
+          console.error(`[ROOM DETECTION] stdout (first 500): ${stdout.substring(0, 500)}`);
+          reject(new Error(`Failed to parse detection result: ${parseError}`));
+        }
+      });
+
+      // Write binary data: model ID length + model ID + image buffer
+      pythonProcess.stdin.write(modelIdLength);
+      pythonProcess.stdin.write(modelIdBytes);
+      pythonProcess.stdin.write(imageBuffer);
+      pythonProcess.stdin.end();
+    });
+  } catch (error) {
+    console.error('[ROOM DETECTION] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
 })
 

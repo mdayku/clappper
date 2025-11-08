@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('clappper', {
   openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
+  openImageFiles: () => ipcRenderer.invoke('dialog:openImageFiles'),
   savePath: (defaultName: string) => ipcRenderer.invoke('dialog:savePath', defaultName),
   ffprobe: (filePath: string) => ipcRenderer.invoke('ffprobe:metadata', filePath),
   generateThumbnail: (payload: { input: string; timestamp: number; clipId: string }) => ipcRenderer.invoke('thumbnail:generate', payload),
@@ -62,6 +63,10 @@ contextBridge.exposeInMainWorld('clappper', {
   filterGetImages: (folderPath: string) => ipcRenderer.invoke('filter:getImages', folderPath),
   filterMoveToBad: (imagePath: string, folderPath: string) => ipcRenderer.invoke('filter:moveToBad', imagePath, folderPath),
   filterRestoreImage: (badPath: string, originalPath: string) => ipcRenderer.invoke('filter:restoreImage', badPath, originalPath),
-  filterMoveFolder: (sourcePath: string, destPath: string) => ipcRenderer.invoke('filter:moveFolder', sourcePath, destPath)
+  filterMoveFolder: (sourcePath: string, destPath: string) => ipcRenderer.invoke('filter:moveFolder', sourcePath, destPath),
+  
+  // Room Detection
+  detectRooms: (imagePath: string, modelId?: string) => ipcRenderer.invoke('room:detect', imagePath, modelId),
+  listRoomModels: () => ipcRenderer.invoke('room:listModels')
 })
 

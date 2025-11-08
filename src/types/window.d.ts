@@ -5,6 +5,7 @@ declare global {
   interface Window {
     clappper: {
       openFiles: () => Promise<string[]>
+      openImageFiles: () => Promise<string[]>
       savePath: (defaultName: string) => Promise<string | null>
       ffprobe: (filePath: string) => Promise<{
         format: {
@@ -80,7 +81,16 @@ declare global {
       filterGetImages: (folderPath: string) => Promise<string[]>
       filterMoveToBad: (imagePath: string, folderPath: string) => Promise<string>
       filterRestoreImage: (badPath: string, originalPath: string) => Promise<{ ok: boolean }>
-      filterMoveFolder: (sourcePath: string, destPath: string) => Promise<{ ok: boolean; newPath: string }>
+      filterMoveFolder: (sourcePath: string, destPath: string) => Promise<{ ok: boolean; newPath: string }>,
+      
+      // Room Detection
+      detectRooms: (imagePath: string, modelId?: string) => Promise<{
+        success: boolean;
+        detections?: Array<{ id: string; bounding_box: [number, number, number, number]; name_hint: string }>;
+        annotated_image?: string | null;
+        error?: string;
+      }>
+      listRoomModels: () => Promise<Array<{ id: string; name: string; path: string }>>
     }
   }
 }

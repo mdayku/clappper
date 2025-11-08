@@ -1,5 +1,9 @@
 import React, { useState } from 'react'
 
+// Build a safe media:// URL from an absolute filesystem path
+const toMediaURL = (absPath: string) =>
+  `media://${encodeURI(absPath.replace(/\\/g, '/'))}`;
+
 interface ComparisonModalProps {
   isOpen: boolean
   onClose: () => void
@@ -105,29 +109,36 @@ export default function ComparisonModal({
         </div>
 
         {/* Video Display */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#000',
-          borderRadius: 4,
-          overflow: 'hidden',
-          minHeight: 400
-        }}>
-          <video
-            key={showEnhanced ? enhancedPath : originalPath}
-            src={`media://${showEnhanced ? enhancedPath : originalPath}`}
-            controls
-            autoPlay
-            loop
-            style={{
-              maxWidth: '100%',
-              maxHeight: '100%',
-              objectFit: 'contain'
-            }}
-          />
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#000',
+            borderRadius: 4,
+            overflow: 'hidden',
+            minHeight: 400,
+          }}
+        >
+          {(() => {
+            const videoURL = toMediaURL(showEnhanced ? enhancedPath : originalPath)
+            return (
+              <video
+                key={videoURL}
+                src={videoURL}
+                controls
+                autoPlay
+                muted
+                loop
+                playsInline
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                preload="metadata"
+              />
+            )
+          })()}
         </div>
+
 
         {/* Info */}
         <div style={{ marginTop: 16, fontSize: 12, color: '#666', textAlign: 'center' }}>
