@@ -391,7 +391,8 @@ export default function ScreenRecorder({ onRecordingStateChange }: ScreenRecorde
         })),
         outPath: savePath,
         pipPosition: 'bottom-right', // Default fallback (not used when per-overlay positions are provided)
-        pipSize: 0.25 // Default fallback (not used when per-overlay sizes are provided)
+        pipSize: 0.25, // Default fallback (not used when per-overlay sizes are provided)
+        preset: 'fast' // Use fast preset for screen recordings to speed up compositing
       }
       
       console.log('Starting FFmpeg compositing with config:', pipConfig)

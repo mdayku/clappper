@@ -55,20 +55,14 @@ def find_model_path(model_id):
 
 # Available models - paths will be resolved dynamically
 MODELS = {
-    'room_detection_v2': {
-        'description': 'YOLO v8 - 20 epochs (V2)'
+    'room-detect-1class-20ep': {
+        'description': 'Room Detection - 1 Class - 20 epochs'
     },
-    'yolo-v8l-200epoch': {
-        'description': 'YOLO v8 Large - 200 epochs (Best Model)'
-    },
-    'yolo-v8l-200': {
-        'description': 'YOLO v8 Large - 200 epochs (Alternative)'
-    },
-    'yolo-v8s-sagemaker': {
-        'description': 'YOLO v8 Small - SageMaker (fallback to v8l-200epoch)'
+    'room-detect-2class-20ep': {
+        'description': 'Room Detection - 2 Class - 20 epochs'
     },
     'default': {
-        'description': 'Default model (fallback to room_detection_v2 or yolo-v8l-200epoch)'
+        'description': 'Default model (room-detect-1class-20ep)'
     }
 }
 
@@ -118,18 +112,13 @@ def load_model(model_id='default'):
 
     # Handle special cases
     if model_id == 'default':
-        # Try bundled model first (room_detection_v2 is bundled with the app)
-        for fallback_id in ['room_detection_v2']:
+        # Try bundled models in order of preference
+        for fallback_id in ['room-detect-1class-20ep', 'room-detect-2class-20ep']:
             model_path = find_model_path(fallback_id)
             if model_path:
                 sys.stderr.write(f"Default model: using bundled {fallback_id}\n")
                 return load_model(fallback_id)
         raise Exception("No default model found - bundled model missing!")
-    
-    if model_id == 'yolo-v8s-sagemaker':
-        # Fallback to yolo-v8l-200epoch
-        sys.stderr.write("yolo-v8s-sagemaker not available locally, using yolo-v8l-200epoch\n")
-        return load_model('yolo-v8l-200epoch')
 
     if model_id not in MODELS:
         sys.stderr.write(f"Unknown model {model_id}, trying to find it anyway...\n")

@@ -221,6 +221,64 @@ const getPresetOptions = (preset) => {
         default: return { preset: 'medium', crf: 23 };
     }
 };
+// Cache for hardware encoder availability (avoid repeated checks)
+let hwEncoderCache = null;
+let hwEncoderChecked = false;
+// Detect available hardware encoder and return optimal settings
+const getHardwareEncoder = async () => {
+    // Return cached result if already checked
+    if (hwEncoderChecked && hwEncoderCache) {
+        return hwEncoderCache;
+    }
+    if (hwEncoderChecked && !hwEncoderCache) {
+        // Already checked and no HW encoder available, return CPU fallback
+        return { codec: 'libx264', preset: 'veryfast' };
+    }
+    const ffmpegPath = getFfmpegPath();
+    // Test encoders in order of preference: NVIDIA > Intel > AMD > CPU
+    const encodersToTest = [
+        { codec: 'h264_nvenc', preset: 'p4' }, // NVIDIA (p4 = medium speed)
+        { codec: 'h264_qsv', preset: 'medium' }, // Intel QuickSync
+        { codec: 'h264_amf', preset: 'speed' } // AMD
+    ];
+    for (const encoder of encodersToTest) {
+        try {
+            // Test if encoder is available by attempting to get help for it
+            await new Promise((resolve, reject) => {
+                const testProcess = spawn(ffmpegPath, ['-hide_banner', '-h', `encoder=${encoder.codec}`]);
+                testProcess.on('close', (code) => {
+                    if (code === 0) {
+                        resolve();
+                    }
+                    else {
+                        reject(new Error(`Encoder ${encoder.codec} not available`));
+                    }
+                });
+                testProcess.on('error', () => {
+                    reject(new Error(`Failed to test encoder ${encoder.codec}`));
+                });
+                // Timeout after 2 seconds
+                setTimeout(() => {
+                    testProcess.kill();
+                    reject(new Error('Encoder test timeout'));
+                }, 2000);
+            });
+            // If we get here, encoder is available
+            console.log(`Hardware encoder detected: ${encoder.codec}`);
+            hwEncoderCache = encoder;
+            hwEncoderChecked = true;
+            return encoder;
+        }
+        catch (err) {
+            // This encoder not available, try next
+            continue;
+        }
+    }
+    // No hardware encoder available, use CPU
+    console.log('No hardware encoder available, using CPU (libx264)');
+    hwEncoderChecked = true;
+    return { codec: 'libx264', preset: 'veryfast' };
+};
 let win = null;
 // Register custom protocols for serving local files
 app.whenReady().then(() => {
@@ -613,6 +671,10 @@ ipcMain.handle('export:pip', async (_e, args) => {
     await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
     const resFilter = getResolutionFilter(resolution);
     const { preset: ffmpegPreset, crf } = getPresetOptions(preset);
+    // Detect hardware encoder for faster compositing
+    const hwEncoder = await getHardwareEncoder();
+    const isHwAccel = hwEncoder.codec !== 'libx264';
+    console.log(`Using encoder: ${hwEncoder.codec} (Hardware: ${isHwAccel})`);
     // For multi-overlay, we'll use simplified positioning (no keyframes for now)
     // TODO: Support keyframes per overlay in future
     const useSimplePositioning = overlayClips.length > 1;
@@ -742,9 +804,20 @@ ipcMain.handle('export:pip', async (_e, args) => {
             '-map', '0:a?', // Try main audio first
             ...(overlayClips.length === 1 ? ['-map', '1:a?'] : []), // Fallback to overlay audio (single overlay only)
             '-map_metadata', '0', // Use main video's metadata
-            '-c:v', 'libx264', // H.264 codec
-            `-preset`, `${ffmpegPreset}`,
-            `-crf`, `${crf}`,
+            '-c:v', hwEncoder.codec, // Use detected encoder (HW or CPU)
+            ...(isHwAccel ? [
+                // Hardware encoder settings
+                `-preset`, hwEncoder.preset,
+                '-rc', 'vbr', // Variable bitrate for better quality
+                '-cq', '23', // Quality level (lower = better)
+                '-b:v', '0', // Let encoder decide bitrate
+                '-threads', '0' // Use all available threads
+            ] : [
+                // CPU encoder settings
+                `-preset`, `${ffmpegPreset}`,
+                `-crf`, `${crf}`,
+                '-threads', '0' // Use all available CPU threads
+            ]),
             '-pix_fmt', 'yuv420p', // Compatibility
             '-c:a', 'aac', // AAC audio
             '-ar', '48000', // 48kHz sample rate
@@ -1354,42 +1427,69 @@ const getRoomDetectionModelPath = () => {
     return path.join(roomerPath, 'room_detection_training', 'local_training_output', 'yolo-v8l-200epoch', 'weights', 'best.pt');
 };
 const getRoomDetectionModelsPath = () => {
+    // Optional: Check for local training output if user has Roomer repo
+    // But don't require it - bundled models are primary
     const roomerPath = process.env.ROOMER_PATH || path.join(process.env.HOME || process.env.USERPROFILE || '', 'Roomer');
     return path.join(roomerPath, 'room_detection_training', 'local_training_output');
 };
-// List available models from local_training_output folder
+const getBundledModelsPath = () => {
+    if (app.isPackaged) {
+        const resourcesPath = process.resourcesPath;
+        return path.join(resourcesPath, 'room-models');
+    }
+    else {
+        return path.join(__dirname, '..', 'resources', 'room-models');
+    }
+};
+// Helper to check if a model exists and add it to the list
+const checkAndAddModel = async (models, modelId, basePath) => {
+    const weightsPath = path.join(basePath, modelId, 'weights', 'best.pt');
+    if (await fs.promises.access(weightsPath).then(() => true).catch(() => false)) {
+        // Check if we already added this model (avoid duplicates)
+        if (!models.find(m => m.id === modelId)) {
+            models.push({
+                id: modelId,
+                name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                path: weightsPath
+            });
+        }
+        return true;
+    }
+    // Check alternative structure: modelId/room_detection/weights/best.pt
+    const altWeightsPath = path.join(basePath, modelId, 'room_detection', 'weights', 'best.pt');
+    if (await fs.promises.access(altWeightsPath).then(() => true).catch(() => false)) {
+        if (!models.find(m => m.id === modelId)) {
+            models.push({
+                id: modelId,
+                name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+                path: altWeightsPath
+            });
+        }
+        return true;
+    }
+    return false;
+};
+// List available models from both bundled resources and local_training_output folder
 ipcMain.handle('room:listModels', async () => {
     try {
-        const modelsPath = getRoomDetectionModelsPath();
-        // Check if models directory exists
-        if (!(await fs.promises.access(modelsPath).then(() => true).catch(() => false))) {
-            console.warn(`Models directory not found: ${modelsPath}`);
-            return [];
-        }
-        const entries = await fs.promises.readdir(modelsPath, { withFileTypes: true });
         const models = [];
-        for (const entry of entries) {
-            if (!entry.isDirectory())
-                continue;
-            const modelId = entry.name;
-            const weightsPath = path.join(modelsPath, modelId, 'weights', 'best.pt');
-            // Check if weights file exists
-            if (await fs.promises.access(weightsPath).then(() => true).catch(() => false)) {
-                models.push({
-                    id: modelId,
-                    name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()), // Format name nicely
-                    path: weightsPath
-                });
+        // First, check bundled models (included with the app)
+        const bundledModelsPath = getBundledModelsPath();
+        if (await fs.promises.access(bundledModelsPath).then(() => true).catch(() => false)) {
+            const entries = await fs.promises.readdir(bundledModelsPath, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    await checkAndAddModel(models, entry.name, bundledModelsPath);
+                }
             }
-            else {
-                // Also check alternative structure: modelId/room_detection/weights/best.pt
-                const altWeightsPath = path.join(modelsPath, modelId, 'room_detection', 'weights', 'best.pt');
-                if (await fs.promises.access(altWeightsPath).then(() => true).catch(() => false)) {
-                    models.push({
-                        id: modelId,
-                        name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-                        path: altWeightsPath
-                    });
+        }
+        // Then, check local training output (user's trained models)
+        const localModelsPath = getRoomDetectionModelsPath();
+        if (await fs.promises.access(localModelsPath).then(() => true).catch(() => false)) {
+            const entries = await fs.promises.readdir(localModelsPath, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    await checkAndAddModel(models, entry.name, localModelsPath);
                 }
             }
         }
@@ -1419,20 +1519,26 @@ ipcMain.handle('room:detect', async (_e, imagePath, modelId) => {
         if (!(await fs.promises.access(inferenceScriptPath).then(() => true).catch(() => false))) {
             throw new Error(`Room detection script not found at: ${inferenceScriptPath}`);
         }
-        // Set working directory to Roomer repo root (where models are)
-        const roomerPath = process.env.ROOMER_PATH || path.join(process.env.HOME || process.env.USERPROFILE || '', 'Roomer');
-        const cwd = (await fs.promises.access(roomerPath).then(() => true).catch(() => false))
-            ? roomerPath
-            : process.cwd();
+        // Set working directory - use current directory (app directory)
+        // No longer requires Roomer repo - models are bundled with the app
+        const cwd = process.cwd();
+        // Get bundled models path for Python script
+        const bundledModelsPath = getBundledModelsPath();
         return new Promise((resolve, reject) => {
             const modelIdStr = modelId || 'default';
             const modelIdBytes = Buffer.from(modelIdStr, 'utf-8');
             // Send: [4 bytes: model ID length][model ID bytes][image buffer]
             const modelIdLength = Buffer.allocUnsafe(4);
             modelIdLength.writeUInt32BE(modelIdBytes.length, 0);
+            // Pass bundled models path as environment variable
+            const env = {
+                ...process.env,
+                BUNDLED_MODELS_PATH: bundledModelsPath
+            };
             const pythonProcess = spawn(pythonPath, [inferenceScriptPath], {
                 cwd: cwd,
-                stdio: ['pipe', 'pipe', 'pipe']
+                stdio: ['pipe', 'pipe', 'pipe'],
+                env: env
             });
             let stdout = '';
             let stderr = '';

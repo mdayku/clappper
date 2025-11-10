@@ -122,3 +122,4 @@ export function RoomDetectionButton() {
 - Models are NOT bundled with Electron - they stay in the Roomer repo
 - Set `ROOMER_PATH` env var if Roomer is not at `C:\Users\marcu\Roomer`
 
+

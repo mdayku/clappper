@@ -242,6 +242,74 @@ const getPresetOptions = (preset: string): { preset: string; crf: number } => {
   }
 }
 
+// Cache for hardware encoder availability (avoid repeated checks)
+let hwEncoderCache: { codec: string; preset: string } | null = null
+let hwEncoderChecked = false
+
+// Detect available hardware encoder and return optimal settings
+const getHardwareEncoder = async (): Promise<{ codec: string; preset: string; crf?: number }> => {
+  // Return cached result if already checked
+  if (hwEncoderChecked && hwEncoderCache) {
+    return hwEncoderCache
+  }
+  
+  if (hwEncoderChecked && !hwEncoderCache) {
+    // Already checked and no HW encoder available, return CPU fallback
+    return { codec: 'libx264', preset: 'veryfast' }
+  }
+  
+  const ffmpegPath = getFfmpegPath()
+  
+  // Test encoders in order of preference: NVIDIA > Intel > AMD > CPU
+  const encodersToTest = [
+    { codec: 'h264_nvenc', preset: 'p4' },      // NVIDIA (p4 = medium speed)
+    { codec: 'h264_qsv', preset: 'medium' },    // Intel QuickSync
+    { codec: 'h264_amf', preset: 'speed' }      // AMD
+  ]
+  
+  for (const encoder of encodersToTest) {
+    try {
+      // Test if encoder is available by attempting to get help for it
+      await new Promise<void>((resolve, reject) => {
+        const testProcess = spawn(ffmpegPath, ['-hide_banner', '-h', `encoder=${encoder.codec}`])
+        
+        testProcess.on('close', (code) => {
+          if (code === 0) {
+            resolve()
+          } else {
+            reject(new Error(`Encoder ${encoder.codec} not available`))
+          }
+        })
+        
+        testProcess.on('error', () => {
+          reject(new Error(`Failed to test encoder ${encoder.codec}`))
+        })
+        
+        // Timeout after 2 seconds
+        setTimeout(() => {
+          testProcess.kill()
+          reject(new Error('Encoder test timeout'))
+        }, 2000)
+      })
+      
+      // If we get here, encoder is available
+      console.log(`Hardware encoder detected: ${encoder.codec}`)
+      hwEncoderCache = encoder
+      hwEncoderChecked = true
+      return encoder
+      
+    } catch (err) {
+      // This encoder not available, try next
+      continue
+    }
+  }
+  
+  // No hardware encoder available, use CPU
+  console.log('No hardware encoder available, using CPU (libx264)')
+  hwEncoderChecked = true
+  return { codec: 'libx264', preset: 'veryfast' }
+}
+
 let win: typeof BrowserWindow.prototype | null = null
 
 // Register custom protocols for serving local files
@@ -684,6 +752,11 @@ ipcMain.handle('export:pip', async (_e: any, args: {
   const resFilter = getResolutionFilter(resolution)
   const { preset: ffmpegPreset, crf } = getPresetOptions(preset)
   
+  // Detect hardware encoder for faster compositing
+  const hwEncoder = await getHardwareEncoder()
+  const isHwAccel = hwEncoder.codec !== 'libx264'
+  console.log(`Using encoder: ${hwEncoder.codec} (Hardware: ${isHwAccel})`)
+  
   // For multi-overlay, we'll use simplified positioning (no keyframes for now)
   // TODO: Support keyframes per overlay in future
   const useSimplePositioning = overlayClips.length > 1
@@ -828,9 +901,20 @@ ipcMain.handle('export:pip', async (_e: any, args: {
         '-map', '0:a?',          // Try main audio first
         ...(overlayClips.length === 1 ? ['-map', '1:a?'] : []), // Fallback to overlay audio (single overlay only)
         '-map_metadata', '0',    // Use main video's metadata
-        '-c:v', 'libx264',       // H.264 codec
-        `-preset`, `${ffmpegPreset}`,
-        `-crf`, `${crf}`,
+        '-c:v', hwEncoder.codec, // Use detected encoder (HW or CPU)
+        ...(isHwAccel ? [
+          // Hardware encoder settings
+          `-preset`, hwEncoder.preset,
+          '-rc', 'vbr',          // Variable bitrate for better quality
+          '-cq', '23',           // Quality level (lower = better)
+          '-b:v', '0',           // Let encoder decide bitrate
+          '-threads', '0'        // Use all available threads
+        ] : [
+          // CPU encoder settings
+          `-preset`, `${ffmpegPreset}`,
+          `-crf`, `${crf}`,
+          '-threads', '0'        // Use all available CPU threads
+        ]),
         '-pix_fmt', 'yuv420p',   // Compatibility
         '-c:a', 'aac',           // AAC audio
         '-ar', '48000',          // 48kHz sample rate
