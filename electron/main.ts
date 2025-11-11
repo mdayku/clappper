@@ -2172,6 +2172,8 @@ For each room, analyze its:
 
 Identify the room type for each detected room. Common types include: kitchen, bathroom, bedroom, living room, dining room, hallway, closet, laundry room, garage, office, etc.
 
+IMPORTANT: If you cannot confidently identify a room type (e.g., the room is unclear, too small, or lacks distinguishing features), use "unknown" as the room type. Only provide specific room types when you have reasonable confidence.
+
 Respond ONLY with valid JSON in this exact format:
 {
   "room_labels": {
@@ -2180,7 +2182,7 @@ Respond ONLY with valid JSON in this exact format:
   }
 }
 
-Use the actual room IDs provided above. Be specific with room types (e.g., "master bedroom" vs "bedroom", "powder room" vs "full bathroom").`
+Use the actual room IDs provided above. Be specific with room types when confident (e.g., "master bedroom" vs "bedroom", "powder room" vs "full bathroom"), but use "unknown" when uncertain.`
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

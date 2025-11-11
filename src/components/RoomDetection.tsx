@@ -607,14 +607,7 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word'
                   }}>
-                    {JSON.stringify(
-                      result.detections.map(det => ({
-                        ...det,
-                        ...(roomLabels[det.id] ? { room_type: roomLabels[det.id] } : {})
-                      })), 
-                      null, 
-                      2
-                    )}
+                    {JSON.stringify(result.detections, null, 2)}
                   </pre>
                 </div>
               </>
