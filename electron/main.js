@@ -1441,6 +1441,25 @@ const getBundledModelsPath = () => {
         return path.join(__dirname, '..', 'resources', 'room-models');
     }
 };
+// Damage Detection Helper Functions
+const getDamageDetectionPythonPath = () => {
+    if (app.isPackaged) {
+        const resourcesPath = process.resourcesPath;
+        return path.join(resourcesPath, 'damage-detection', 'inference_roof.py');
+    }
+    else {
+        return path.join(__dirname, '..', 'resources', 'damage-detection', 'inference_roof.py');
+    }
+};
+const getBundledDamageModelsPath = () => {
+    if (app.isPackaged) {
+        const resourcesPath = process.resourcesPath;
+        return path.join(resourcesPath, 'damage-models');
+    }
+    else {
+        return path.join(__dirname, '..', 'resources', 'damage-models');
+    }
+};
 // Helper to check if a model exists and add it to the list
 const checkAndAddModel = async (models, modelId, basePath) => {
     const weightsPath = path.join(basePath, modelId, 'weights', 'best.pt');
@@ -1595,6 +1614,131 @@ ipcMain.handle('room:detect', async (_e, imagePath, modelId) => {
     }
     catch (error) {
         console.error('[ROOM DETECTION] Error:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+});
+// Damage Detection IPC Handlers
+// List available damage detection models
+ipcMain.handle('damage:listModels', async () => {
+    try {
+        const models = [];
+        const bundledPath = getBundledDamageModelsPath();
+        // Check if bundled path exists
+        if (!(await fs.promises.access(bundledPath).then(() => true).catch(() => false))) {
+            console.log(`[DAMAGE DETECTION] Bundled models path not found: ${bundledPath}`);
+            return [];
+        }
+        // Scan for models in bundled path
+        const entries = await fs.promises.readdir(bundledPath, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.isDirectory()) {
+                await checkAndAddModel(models, entry.name, bundledPath);
+            }
+        }
+        console.log(`[DAMAGE DETECTION] Found ${models.length} models`);
+        return models;
+    }
+    catch (err) {
+        console.error('[DAMAGE DETECTION] Failed to list models:', err);
+        return [];
+    }
+});
+// Damage detection handler
+ipcMain.handle('damage:detect', async (_e, imagePath, modelId) => {
+    try {
+        // Read image file
+        const imageBuffer = await fs.promises.readFile(imagePath);
+        // Find Python executable
+        const venvPython = process.platform === 'win32'
+            ? path.join(process.cwd(), '.venv', 'Scripts', 'python.exe')
+            : path.join(process.cwd(), '.venv', 'bin', 'python3');
+        const pythonPath = (await fs.promises.access(venvPython).then(() => true).catch(() => false))
+            ? venvPython
+            : (process.platform === 'win32' ? 'python' : 'python3');
+        // Get inference script path
+        const inferenceScriptPath = getDamageDetectionPythonPath();
+        // Check if script exists
+        if (!(await fs.promises.access(inferenceScriptPath).then(() => true).catch(() => false))) {
+            throw new Error(`Damage detection script not found at: ${inferenceScriptPath}`);
+        }
+        // Set working directory - use current directory (app directory)
+        const cwd = process.cwd();
+        // Get bundled models path for Python script
+        const bundledModelsPath = getBundledDamageModelsPath();
+        return new Promise((resolve, reject) => {
+            const modelIdStr = modelId || 'default';
+            // Prepare model ID as buffer
+            const modelIdBytes = Buffer.from(modelIdStr, 'utf-8');
+            const modelIdLength = Buffer.alloc(4);
+            modelIdLength.writeUInt32BE(modelIdBytes.length, 0);
+            // Spawn Python process
+            const pythonProcess = spawn(pythonPath, [inferenceScriptPath], {
+                cwd,
+                env: {
+                    ...process.env,
+                    BUNDLED_MODELS_PATH: bundledModelsPath
+                }
+            });
+            let stdout = '';
+            let stderr = '';
+            pythonProcess.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+            pythonProcess.stderr.on('data', (data) => {
+                console.error(`[DAMAGE DETECTION STDERR] ${data.toString()}`);
+            });
+            pythonProcess.on('close', (code) => {
+                if (code !== 0) {
+                    console.error(`[DAMAGE DETECTION] Python process exited with code ${code}`);
+                    console.error(`[DAMAGE DETECTION] stderr: ${stderr}`);
+                    reject(new Error(`Damage detection failed: ${stderr || 'Unknown error'}`));
+                    return;
+                }
+                try {
+                    // YOLO prints progress messages to stdout, so extract only the JSON
+                    const lines = stdout.trim().split('\n');
+                    let jsonLine = '';
+                    // Find the last line that starts with '{' (our JSON response)
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        const line = lines[i].trim();
+                        if (line.startsWith('{')) {
+                            jsonLine = lines.slice(i).join('\n');
+                            break;
+                        }
+                    }
+                    const jsonText = jsonLine || stdout;
+                    const result = JSON.parse(jsonText);
+                    if (result.error) {
+                        reject(new Error(result.error));
+                        return;
+                    }
+                    resolve({
+                        success: true,
+                        detections: result.detections || [],
+                        cost_estimate: result.cost_estimate || null,
+                        annotated_image: result.annotated_image || null,
+                        image_width: result.image_width || 0,
+                        image_height: result.image_height || 0
+                    });
+                }
+                catch (parseError) {
+                    console.error(`[DAMAGE DETECTION] Failed to parse output`);
+                    console.error(`[DAMAGE DETECTION] stdout (first 500): ${stdout.substring(0, 500)}`);
+                    reject(new Error(`Failed to parse detection result: ${parseError}`));
+                }
+            });
+            // Write binary data: model ID length + model ID + image buffer
+            pythonProcess.stdin.write(modelIdLength);
+            pythonProcess.stdin.write(modelIdBytes);
+            pythonProcess.stdin.write(imageBuffer);
+            pythonProcess.stdin.end();
+        });
+    }
+    catch (error) {
+        console.error('[DAMAGE DETECTION] Error:', error);
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'

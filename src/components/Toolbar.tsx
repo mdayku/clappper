@@ -4,6 +4,7 @@ import ScreenRecorder from './ScreenRecorder'
 import EnhanceModal from './EnhanceModal'
 import ImageFilter from './ImageFilter'
 import RoomDetection from './RoomDetection'
+import DamageDetector from './DamageDetector'
 
 export default function Toolbar() {
   const [progress, setProgress] = useState(0)
@@ -16,6 +17,8 @@ export default function Toolbar() {
   const [showFilterModal, setShowFilterModal] = useState(false)
   // Room detection modal - explicitly starts as false, only opens via button click
   const [showRoomDetection, setShowRoomDetection] = useState(false)
+  // Damage detection modal
+  const [showDamageDetection, setShowDamageDetection] = useState(false)
   const [filterInitialDir, setFilterInitialDir] = useState<string | undefined>(undefined)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -483,6 +486,9 @@ export default function Toolbar() {
         <button onClick={() => setShowRoomDetection(true)} disabled={isExporting || isImporting}>
           Detect Rooms
         </button>
+        <button onClick={() => setShowDamageDetection(true)} disabled={isExporting || isImporting}>
+          Detect Damage
+        </button>
         <button 
           onClick={clearAll} 
           disabled={isExporting || isImporting || allClips.length === 0}
@@ -773,6 +779,12 @@ export default function Toolbar() {
       <RoomDetection
         isOpen={showRoomDetection}
         onClose={() => setShowRoomDetection(false)}
+      />
+      
+      {/* Damage Detection Modal */}
+      <DamageDetector
+        isOpen={showDamageDetection}
+        onClose={() => setShowDamageDetection(false)}
       />
     </div>
   )

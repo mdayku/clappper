@@ -72,7 +72,7 @@ loaded_models = {}
 def main():
     try:
         # Read raw image bytes from stdin (no JSON, just binary data)
-        # First 4 bytes are model ID length, then model ID, then image data
+        # First 4 bytes are model ID length, then model ID, then confidence (4 bytes float), then image data
         model_id_length_bytes = sys.stdin.buffer.read(4)
         if len(model_id_length_bytes) != 4:
             raise ValueError("Invalid input format")
@@ -81,16 +81,24 @@ def main():
         model_id_bytes = sys.stdin.buffer.read(model_id_length)
         model_id = model_id_bytes.decode('utf-8') if model_id_bytes else 'default'
         
+        # Read confidence threshold (4 bytes, float)
+        import struct
+        confidence_bytes = sys.stdin.buffer.read(4)
+        if len(confidence_bytes) == 4:
+            confidence = struct.unpack('>f', confidence_bytes)[0]  # Big-endian float
+        else:
+            confidence = 0.2  # Default fallback
+        
         # Read remaining image data
         image_data = sys.stdin.buffer.read()
         
         if not image_data:
             raise ValueError("No image data provided")
         
-        sys.stderr.write(f"Received {len(image_data)} bytes of image data for model: {model_id}\n")
+        sys.stderr.write(f"Received {len(image_data)} bytes of image data for model: {model_id}, confidence: {confidence}\n")
         
         # Perform inference
-        result = perform_inference(image_data, model_id)
+        result = perform_inference(image_data, model_id, confidence)
         # Only output JSON to stdout - all debug goes to stderr
         print(json.dumps(result))
 
@@ -158,10 +166,10 @@ def load_model(model_id='default'):
             return load_model('default')
         raise Exception(f"Model loading failed: {e}")
 
-def perform_inference(image_data, model_id='default'):
+def perform_inference(image_data, model_id='default', confidence=0.2):
     """Perform room detection inference with trained YOLO model"""
     try:
-        sys.stderr.write(f"Processing image: {len(image_data)} bytes with model {model_id}\n")
+        sys.stderr.write(f"Processing image: {len(image_data)} bytes with model {model_id}, confidence: {confidence}\n")
         # Decode the image
         image = Image.open(BytesIO(image_data))
         img_width, img_height = image.size
@@ -171,13 +179,13 @@ def perform_inference(image_data, model_id='default'):
         model = load_model(model_id)
 
         # Run inference - suppress YOLO's verbose output
-        sys.stderr.write("Running YOLO inference...\n")
+        sys.stderr.write(f"Running YOLO inference with confidence threshold: {confidence}...\n")
         # Set verbose=False and also redirect stdout temporarily to suppress YOLO output
         import contextlib
         import io
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
-            results = model(image, conf=0.25, iou=0.45, verbose=False)  # Standard YOLO thresholds
+            results = model(image, conf=confidence, iou=0.45, verbose=False)  # Use configurable confidence threshold
         # YOLO output is now captured in f, not printed to stdout
 
         # Draw bounding boxes on image

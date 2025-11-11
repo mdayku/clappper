@@ -16,6 +16,9 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
     annotated_image?: string | null
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [confidence, setConfidence] = useState<number>(0.2)
+  const [confidenceInput, setConfidenceInput] = useState<string>('0.20')
+  const [confidenceError, setConfidenceError] = useState<string | null>(null)
 
   const loadModels = React.useCallback(async () => {
     setLoadingModels(true)
@@ -40,6 +43,24 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
       loadModels()
     }
   }, [isOpen, availableModels.length, loadModels])
+
+  const handleConfidenceSliderChange = (value: number) => {
+    setConfidence(value)
+    setConfidenceInput(value.toFixed(2))
+    setConfidenceError(null)
+  }
+
+  const handleConfidenceInputChange = (value: string) => {
+    setConfidenceInput(value)
+    
+    const num = parseFloat(value)
+    if (isNaN(num) || num < 0.01 || num > 0.99) {
+      setConfidenceError('Please enter a value between 0.01 and 0.99')
+    } else {
+      setConfidence(num)
+      setConfidenceError(null)
+    }
+  }
 
   const handleSelectImage = async () => {
     try {
@@ -68,7 +89,7 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
     setError(null)
     
     try {
-      const result = await window.clappper.detectRooms(selectedImage, selectedModel)
+      const result = await window.clappper.detectRooms(selectedImage, selectedModel, confidence)
       
       if (!result.success) {
         setError(result.error || 'Detection failed')
@@ -214,6 +235,48 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
               ) : (
                 <div style={{ fontSize: 12, color: '#999', padding: '8px 0' }}>
                   No models found. Using default.
+                </div>
+              )}
+            </div>
+
+            {/* Confidence Threshold */}
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 'bold', marginBottom: 6, color: '#495057' }}>
+                Confidence Threshold: {confidence.toFixed(2)}
+              </label>
+              <input
+                type="range"
+                min="0.01"
+                max="0.99"
+                step="0.01"
+                value={confidence}
+                onChange={(e) => handleConfidenceSliderChange(parseFloat(e.target.value))}
+                disabled={detecting}
+                style={{
+                  width: '100%',
+                  marginBottom: 8,
+                  cursor: detecting ? 'not-allowed' : 'pointer'
+                }}
+              />
+              <input
+                type="text"
+                value={confidenceInput}
+                onChange={(e) => handleConfidenceInputChange(e.target.value)}
+                disabled={detecting}
+                placeholder="0.01 - 0.99"
+                style={{
+                  width: '100%',
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: confidenceError ? '1px solid #dc3545' : '1px solid #ccc',
+                  borderRadius: 4,
+                  background: 'white',
+                  cursor: detecting ? 'not-allowed' : 'default'
+                }}
+              />
+              {confidenceError && (
+                <div style={{ fontSize: 11, color: '#dc3545', marginTop: 4 }}>
+                  {confidenceError}
                 </div>
               )}
             </div>
@@ -374,22 +437,20 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
               <div style={{
                 flex: 1,
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: '#f8f9fa',
                 borderRadius: 4,
                 padding: 16,
-                minHeight: 400
+                minHeight: 400,
+                overflow: 'auto'
               }}>
-                <div style={{ textAlign: 'center', color: '#6c757d' }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>📐</div>
-                  <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
-                    Image Selected
-                  </div>
-                  <div style={{ fontSize: 14 }}>
-                    Click "Detect Rooms" to analyze
-                  </div>
-                </div>
+                <img
+                  src={`file://${selectedImage}`}
+                  alt="Selected preview"
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
               </div>
             ) : (
               <div style={{

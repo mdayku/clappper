@@ -84,13 +84,38 @@ declare global {
       filterMoveFolder: (sourcePath: string, destPath: string) => Promise<{ ok: boolean; newPath: string }>,
       
       // Room Detection
-      detectRooms: (imagePath: string, modelId?: string) => Promise<{
+      detectRooms: (imagePath: string, modelId?: string, confidence?: number) => Promise<{
         success: boolean;
         detections?: Array<{ id: string; bounding_box: [number, number, number, number]; name_hint: string }>;
         annotated_image?: string | null;
         error?: string;
       }>
       listRoomModels: () => Promise<Array<{ id: string; name: string; path: string }>>
+      
+      // Damage Detection
+      detectDamage: (imagePath: string, modelId?: string, confidence?: number) => Promise<{
+        success: boolean;
+        detections?: Array<{
+          cls: string;
+          bbox: number[];
+          conf: number;
+          severity: number;
+          affected_area_pct: number;
+        }>;
+        cost_estimate?: {
+          labor_usd: number;
+          materials_usd: number;
+          disposal_usd: number;
+          contingency_usd: number;
+          total_usd: number;
+          assumptions: string;
+        };
+        annotated_image?: string | null;
+        image_width?: number;
+        image_height?: number;
+        error?: string;
+      }>
+      listDamageModels: () => Promise<Array<{ id: string; name: string; path: string }>>
     }
   }
 }

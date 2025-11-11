@@ -67,6 +67,16 @@
         "from": "resources/room-models/",
         "to": "room-models/",
         "filter": ["**/*"]
+      },
+      {
+        "from": "resources/damage-detection/",
+        "to": "damage-detection/",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/damage-models/",
+        "to": "damage-models/",
+        "filter": ["**/*"]
       }
 ],
     "win": {
