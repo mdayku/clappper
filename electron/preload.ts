@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('clappper', {
     ipcRenderer.removeAllListeners('menu:load-project')
     ipcRenderer.on('menu:load-project', () => callback())
   },
+  onMenuChangeApiKey: (callback: () => void) => {
+    ipcRenderer.removeAllListeners('menu:change-api-key')
+    ipcRenderer.on('menu:change-api-key', () => callback())
+  },
   getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
   saveRecording: (filePath: string, base64Data: string) =>
     ipcRenderer.invoke('screen:save-recording', { filePath, base64Data }),
@@ -77,6 +81,9 @@ contextBridge.exposeInMainWorld('clappper', {
   // Settings
   getOpenAIKey: () => ipcRenderer.invoke('settings:getOpenAIKey'),
   setOpenAIKey: (apiKey: string) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey),
-  getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats')
+  getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats'),
+  
+  // Contractor Search
+  findContractors: (zipCode: string, category: string) => ipcRenderer.invoke('contractors:find', zipCode, category)
 })
 

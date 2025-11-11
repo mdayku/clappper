@@ -64,6 +64,7 @@ declare global {
       checkAutosave: () => Promise<{ exists: boolean; path?: string }>
       onMenuSaveProject: (callback: () => void) => void
       onMenuLoadProject: (callback: () => void) => void
+      onMenuChangeApiKey: (callback: () => void) => void
       getScreenSources: () => Promise<Array<{ id: string; name: string; thumbnail: string }>>
       saveRecording: (filePath: string, base64Data: string) => Promise<{ ok: boolean }>
       enhanceVideo: (payload: { input: string; output: string }) => Promise<{ ok: boolean; outPath: string; outputWidth?: number; outputHeight?: number; scale?: number }>
@@ -146,6 +147,20 @@ declare global {
           remainingCalls: number
           resetInSeconds: number
         }
+      }>
+      
+      // Contractor Search
+      findContractors: (zipCode: string, category: string) => Promise<{
+        success: boolean
+        contractors?: Array<{
+          name: string
+          rating: number
+          review_count: number
+          phone: string
+          distance: number
+          url: string
+        }>
+        error?: string
       }>
     }
   }

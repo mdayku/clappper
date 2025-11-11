@@ -10,6 +10,9 @@ export default function App() {
   const { playhead, setPlayhead, selectedId, deleteClip, splitClip, getTotalDuration, undo, redo } = store
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [autosavePath, setAutosavePath] = React.useState<string>('')
+  const [showApiKeyDialog, setShowApiKeyDialog] = React.useState(false)
+  const [apiKeyInput, setApiKeyInput] = React.useState('')
+  const [apiKeySaveError, setApiKeySaveError] = React.useState<string | null>(null)
   
   // Check for autosave on mount and offer to restore
   // TEMPORARILY DISABLED to test if autosave is causing room detection to show
@@ -82,6 +85,31 @@ export default function App() {
     return () => clearInterval(interval)
   }, [autosavePath, store])
   
+  // Listen for menu events
+  useEffect(() => {
+    const handleChangeApiKey = async () => {
+      // Load current API key
+      const currentKey = await window.clappper.getOpenAIKey()
+      setApiKeyInput(currentKey || '')
+      setShowApiKeyDialog(true)
+    }
+    
+    if (window.clappper?.onMenuChangeApiKey) {
+      window.clappper.onMenuChangeApiKey(handleChangeApiKey)
+    }
+  }, [])
+
+  const handleSaveApiKey = async () => {
+    try {
+      await window.clappper.setOpenAIKey(apiKeyInput)
+      setShowApiKeyDialog(false)
+      setApiKeySaveError(null)
+      alert('API key saved successfully!')
+    } catch (err) {
+      setApiKeySaveError(`Failed to save API key: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -156,6 +184,95 @@ export default function App() {
         <Player isPlaying={isPlaying} setIsPlaying={setIsPlaying} />
         <Timeline />
       </div>
+
+      {/* API Key Configuration Dialog */}
+      {showApiKeyDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 8,
+            padding: 24,
+            maxWidth: 500,
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>🔑 OpenAI API Key</h3>
+            <p style={{ fontSize: 14, color: '#495057', marginBottom: 16 }}>
+              Enter your OpenAI API key for GPT-4 Vision cost estimation.
+              Your key will be stored locally and never shared.
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="sk-..."
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            {apiKeySaveError && (
+              <div style={{ fontSize: 12, color: '#dc3545', marginBottom: 16 }}>
+                {apiKeySaveError}
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: '#6c757d', marginBottom: 16 }}>
+              Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: '#007bff' }}>platform.openai.com/api-keys</a>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowApiKeyDialog(false)
+                  setApiKeySaveError(null)
+                }}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  background: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveApiKey}
+                disabled={!apiKeyInput.trim()}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: apiKeyInput.trim() ? '#28a745' : '#ccc',
+                  color: 'white',
+                  cursor: apiKeyInput.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: 'bold'
+                }}
+              >
+                Save Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ErrorBoundary>
   )
 }

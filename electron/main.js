@@ -414,6 +414,18 @@ const createWindow = async () => {
                 { type: 'separator' },
                 { role: 'togglefullscreen' }
             ]
+        },
+        {
+            label: 'Settings',
+            submenu: [
+                {
+                    label: 'Change OpenAI API Key...',
+                    click: () => {
+                        // Send event to renderer to show API key dialog
+                        win?.webContents.send('menu:change-api-key');
+                    }
+                }
+            ]
         }
     ];
     const menu = Menu.buildFromTemplate(menuTemplate);
@@ -1843,6 +1855,83 @@ ipcMain.handle('settings:getUsageStats', async () => {
         rate_limit: rateLimit
     };
 });
+// Find contractors using Yelp Fusion API
+ipcMain.handle('contractors:find', async (_e, zipCode, category) => {
+    try {
+        // Get Yelp API key from config or environment
+        const config = await loadConfig();
+        const apiKey = config.yelp_api_key || process.env.YELP_API_KEY;
+        // For demo purposes, if no Yelp API key, return mock data
+        if (!apiKey) {
+            console.log('[CONTRACTORS] No Yelp API key configured, using mock data for demo');
+            return {
+                success: true,
+                contractors: [
+                    {
+                        name: 'ABC Roofing & Construction',
+                        rating: 4.8,
+                        review_count: 127,
+                        phone: '+1-555-0123',
+                        distance: 2.3,
+                        url: 'https://www.yelp.com'
+                    },
+                    {
+                        name: 'Premium Roof Repairs',
+                        rating: 4.6,
+                        review_count: 89,
+                        phone: '+1-555-0456',
+                        distance: 3.7,
+                        url: 'https://www.yelp.com'
+                    },
+                    {
+                        name: 'Expert Roofing Solutions',
+                        rating: 4.5,
+                        review_count: 64,
+                        phone: '+1-555-0789',
+                        distance: 5.1,
+                        url: 'https://www.yelp.com'
+                    }
+                ]
+            };
+        }
+        console.log(`[CONTRACTORS] Searching for ${category} contractors near ${zipCode}`);
+        const response = await fetch(`https://api.yelp.com/v3/businesses/search?location=${zipCode}&term=${category}&categories=roofing&sort_by=rating&limit=5`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept': 'application/json'
+            }
+        });
+        if (!response.ok) {
+            console.error('[CONTRACTORS] Yelp API error:', response.status, response.statusText);
+            return {
+                success: false,
+                error: `Yelp API error: ${response.status} ${response.statusText}`
+            };
+        }
+        const data = await response.json();
+        const contractors = data.businesses?.map((business) => ({
+            name: business.name,
+            rating: business.rating || 0,
+            review_count: business.review_count || 0,
+            phone: business.display_phone || business.phone || '',
+            distance: business.distance ? (business.distance * 0.000621371).toFixed(1) : 0, // meters to miles
+            url: business.url || ''
+        })) || [];
+        console.log(`[CONTRACTORS] Found ${contractors.length} contractors`);
+        return {
+            success: true,
+            contractors
+        };
+    }
+    catch (error) {
+        console.error('[CONTRACTORS] Error:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+});
 // Estimate damage cost using GPT-4 Vision
 ipcMain.handle('damage:estimateCost', async (_e, imagePath, detections) => {
     try {
@@ -1937,31 +2026,43 @@ Respond ONLY with valid JSON in this exact format:
             console.log(`[DAMAGE COST] Tokens used - Prompt: ${data.usage.prompt_tokens}, Completion: ${data.usage.completion_tokens}, Total: ${data.usage.total_tokens}`);
         }
         console.log('[DAMAGE COST] GPT-4 Vision response received');
+        console.log('[DAMAGE COST] Raw content:', content);
         // Try to extract JSON from markdown code blocks if present
         if (content.includes('```json')) {
             content = content.split('```json')[1].split('```')[0].trim();
+            console.log('[DAMAGE COST] Extracted from ```json block');
         }
         else if (content.includes('```')) {
             content = content.split('```')[1].split('```')[0].trim();
+            console.log('[DAMAGE COST] Extracted from ``` block');
         }
+        console.log('[DAMAGE COST] Content to parse:', content);
         const costData = JSON.parse(content);
+        console.log('[DAMAGE COST] Parsed cost data:', JSON.stringify(costData, null, 2));
         // Validate required fields
         const requiredFields = ['labor_usd', 'materials_usd', 'disposal_usd', 'contingency_usd', 'total_usd', 'assumptions'];
-        if (requiredFields.every(field => field in costData)) {
+        const missingFields = requiredFields.filter(field => !(field in costData));
+        if (missingFields.length === 0) {
+            console.log('[DAMAGE COST] ✅ All fields validated, returning cost estimate');
             return {
                 success: true,
                 cost_estimate: costData
             };
         }
         else {
+            console.error('[DAMAGE COST] ❌ Missing fields:', missingFields);
+            console.error('[DAMAGE COST] Available fields:', Object.keys(costData));
             return {
                 success: false,
-                error: 'GPT-4 Vision response missing required fields'
+                error: `GPT-4 Vision response missing required fields: ${missingFields.join(', ')}`
             };
         }
     }
     catch (error) {
-        console.error('[DAMAGE COST] Error:', error);
+        console.error('[DAMAGE COST] ❌ Error:', error);
+        if (error instanceof SyntaxError) {
+            console.error('[DAMAGE COST] JSON parsing failed - content was not valid JSON');
+        }
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'

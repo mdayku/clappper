@@ -38,19 +38,6 @@ DAMAGE_CLASSES = {
     3: "hail_bruise"
 }
 
-# Cost estimation constants
-SETUP_MIN_USD = 150.00
-CLASS_BASE_COSTS = {
-    "missing_shingle": 125.00,
-    "lifted_shingle": 125.00,
-    "torn_shingle": 125.00,
-    "hail_bruise": 90.00,
-}
-SEVERITY_MULTIPLIER = 400.00
-DISPOSAL_USD = 25.00
-CONTINGENCY_PCT = 0.10
-LABOR_PCT = 0.60
-
 # Helper to find model path
 def find_model_path(model_id):
     """Find model path in bundled models"""
@@ -268,35 +255,6 @@ Respond ONLY with valid JSON in this exact format:
         traceback.print_exc(file=sys.stderr)
         return None
 
-def estimate_cost(detections):
-    """Fallback heuristic cost estimation from detections"""
-    has_findings = len(detections) > 0
-    setup_min = SETUP_MIN_USD if has_findings else 0.00
-    
-    disposal = DISPOSAL_USD if any(
-        d["cls"] in ("missing_shingle", "torn_shingle") 
-        for d in detections
-    ) else 0.00
-    
-    subtotal = setup_min
-    for d in detections:
-        cls = d.get("cls", "")
-        sev = float(d.get("severity", 0.0))
-        base = CLASS_BASE_COSTS.get(cls, 100.00)
-        subtotal += base + (SEVERITY_MULTIPLIER * sev)
-    
-    contingency = CONTINGENCY_PCT * subtotal
-    total = subtotal + disposal + contingency
-    
-    return {
-        "labor_usd": round(subtotal * LABOR_PCT, 2),
-        "materials_usd": round(subtotal * (1 - LABOR_PCT), 2),
-        "disposal_usd": round(disposal, 2),
-        "contingency_usd": round(contingency, 2),
-        "total_usd": round(total, 2),
-        "assumptions": "Heuristic fallback: class base + area severity + setup minimum + 10% contingency."
-    }
-
 def perform_inference(image_data, model_id='default', conf_threshold=0.2):
     """Perform damage detection inference with trained YOLO model"""
     try:
@@ -324,7 +282,7 @@ def perform_inference(image_data, model_id='default', conf_threshold=0.2):
         if not results or len(results) == 0:
             return {
                 "detections": [],
-                "cost_estimate": estimate_cost([]),
+                "cost_estimate": None,
                 "image_width": img_width,
                 "image_height": img_height,
                 "annotated_image": None
@@ -378,12 +336,12 @@ def perform_inference(image_data, model_id='default', conf_threshold=0.2):
         except Exception as e:
             sys.stderr.write(f"Failed to generate annotated image: {e}\n")
         
-        # Estimate cost
-        cost_estimate = estimate_cost(detections)
+        # Cost estimation is now handled by GPT-4 Vision on user request
+        # No heuristic placeholder needed
         
         return {
             "detections": detections,
-            "cost_estimate": cost_estimate,
+            "cost_estimate": None,
             "image_width": img_width,
             "image_height": img_height,
             "annotated_image": annotated_image
