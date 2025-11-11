@@ -43,6 +43,11 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false)
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [hasApiKey, setHasApiKey] = useState(false)
+  const [usageStats, setUsageStats] = useState<{
+    total_calls: number
+    total_tokens: number
+    remainingCalls: number
+  } | null>(null)
 
   const loadModels = React.useCallback(async () => {
     setLoadingModels(true)
@@ -68,6 +73,20 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
     }
   }, [isOpen, availableModels.length, loadModels])
 
+  // Load usage stats
+  const loadUsageStats = React.useCallback(async () => {
+    try {
+      const stats = await window.clappper.getUsageStats()
+      setUsageStats({
+        total_calls: stats.usage.total_calls,
+        total_tokens: stats.usage.total_tokens,
+        remainingCalls: stats.rate_limit.remainingCalls
+      })
+    } catch (err) {
+      console.error('Failed to load usage stats:', err)
+    }
+  }, [])
+
   // Check for API key on mount
   useEffect(() => {
     if (isOpen) {
@@ -75,8 +94,10 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
         setHasApiKey(!!key)
         if (key) setApiKeyInput(key)
       }).catch(() => setHasApiKey(false))
+      
+      loadUsageStats()
     }
-  }, [isOpen])
+  }, [isOpen, loadUsageStats])
 
   const handleConfidenceSliderChange = (value: number) => {
     setConfidence(value)
@@ -172,6 +193,9 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
         ...result,
         cost_estimate: costResult.cost_estimate
       })
+      
+      // Refresh usage stats after successful call
+      await loadUsageStats()
     } catch (err) {
       setError(`Cost estimation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
@@ -438,6 +462,24 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                 {!hasApiKey && (
                   <div style={{ fontSize: 11, color: '#856404', fontStyle: 'italic' }}>
                     💡 OpenAI API key required
+                  </div>
+                )}
+
+                {/* Usage Stats */}
+                {hasApiKey && usageStats && (
+                  <div style={{
+                    fontSize: 10,
+                    color: '#6c757d',
+                    padding: '6px 8px',
+                    background: '#f8f9fa',
+                    border: '1px solid #dee2e6',
+                    borderRadius: 4
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: 2 }}>📊 API Usage</div>
+                    <div>Total calls: {usageStats.total_calls} | Tokens: {usageStats.total_tokens.toLocaleString()}</div>
+                    <div style={{ color: usageStats.remainingCalls <= 3 ? '#dc3545' : '#28a745' }}>
+                      Rate limit: {usageStats.remainingCalls}/10 calls remaining
+                    </div>
                   </div>
                 )}
                 

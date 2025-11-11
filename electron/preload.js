@@ -59,5 +59,6 @@ contextBridge.exposeInMainWorld('clappper', {
     estimateDamageCost: (imagePath, detections) => ipcRenderer.invoke('damage:estimateCost', imagePath, detections),
     // Settings
     getOpenAIKey: () => ipcRenderer.invoke('settings:getOpenAIKey'),
-    setOpenAIKey: (apiKey) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey)
+    setOpenAIKey: (apiKey) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey),
+    getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats')
 });

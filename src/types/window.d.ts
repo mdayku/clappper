@@ -132,6 +132,21 @@ declare global {
       // Settings
       getOpenAIKey: () => Promise<string | null>
       setOpenAIKey: (apiKey: string) => Promise<{ success: boolean }>
+      getUsageStats: () => Promise<{
+        usage: {
+          total_calls: number
+          total_prompt_tokens: number
+          total_completion_tokens: number
+          total_tokens: number
+          first_call: string | null
+          last_call: string | null
+        }
+        rate_limit: {
+          allowed: boolean
+          remainingCalls: number
+          resetInSeconds: number
+        }
+      }>
     }
   }
 }

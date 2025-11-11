@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('clappper', {
   
   // Settings
   getOpenAIKey: () => ipcRenderer.invoke('settings:getOpenAIKey'),
-  setOpenAIKey: (apiKey: string) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey)
+  setOpenAIKey: (apiKey: string) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey),
+  getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats')
 })
 

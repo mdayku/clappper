@@ -2004,6 +2004,58 @@ const saveConfig = async (config: any): Promise<void> => {
   await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
 }
 
+// Rate limiting for GPT-4 Vision API calls
+const apiCallTimestamps: number[] = []
+const RATE_LIMIT_WINDOW_MS = 60000 // 1 minute
+const MAX_CALLS_PER_MINUTE = 10
+
+const checkRateLimit = (): { allowed: boolean; remainingCalls: number; resetInSeconds: number } => {
+  const now = Date.now()
+  const windowStart = now - RATE_LIMIT_WINDOW_MS
+  
+  // Remove old timestamps outside the window
+  while (apiCallTimestamps.length > 0 && apiCallTimestamps[0] < windowStart) {
+    apiCallTimestamps.shift()
+  }
+  
+  const remainingCalls = MAX_CALLS_PER_MINUTE - apiCallTimestamps.length
+  const resetInSeconds = apiCallTimestamps.length > 0 
+    ? Math.ceil((apiCallTimestamps[0] + RATE_LIMIT_WINDOW_MS - now) / 1000)
+    : 0
+  
+  return {
+    allowed: apiCallTimestamps.length < MAX_CALLS_PER_MINUTE,
+    remainingCalls: Math.max(0, remainingCalls),
+    resetInSeconds
+  }
+}
+
+const recordApiCall = () => {
+  apiCallTimestamps.push(Date.now())
+}
+
+const incrementUsageStats = async (tokensUsed: { prompt: number; completion: number; total: number }) => {
+  const config = await loadConfig()
+  if (!config.usage_stats) {
+    config.usage_stats = {
+      total_calls: 0,
+      total_prompt_tokens: 0,
+      total_completion_tokens: 0,
+      total_tokens: 0,
+      first_call: new Date().toISOString(),
+      last_call: null
+    }
+  }
+  
+  config.usage_stats.total_calls += 1
+  config.usage_stats.total_prompt_tokens += tokensUsed.prompt
+  config.usage_stats.total_completion_tokens += tokensUsed.completion
+  config.usage_stats.total_tokens += tokensUsed.total
+  config.usage_stats.last_call = new Date().toISOString()
+  
+  await saveConfig(config)
+}
+
 // Settings IPC handlers
 ipcMain.handle('settings:getOpenAIKey', async () => {
   const config = await loadConfig()
@@ -2017,9 +2069,35 @@ ipcMain.handle('settings:setOpenAIKey', async (_e: any, apiKey: string) => {
   return { success: true }
 })
 
+ipcMain.handle('settings:getUsageStats', async () => {
+  const config = await loadConfig()
+  const rateLimit = checkRateLimit()
+  
+  return {
+    usage: config.usage_stats || {
+      total_calls: 0,
+      total_prompt_tokens: 0,
+      total_completion_tokens: 0,
+      total_tokens: 0,
+      first_call: null,
+      last_call: null
+    },
+    rate_limit: rateLimit
+  }
+})
+
 // Estimate damage cost using GPT-4 Vision
 ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detections: any[]) => {
   try {
+    // Check rate limit first
+    const rateLimit = checkRateLimit()
+    if (!rateLimit.allowed) {
+      return {
+        success: false,
+        error: `Rate limit exceeded. Please wait ${rateLimit.resetInSeconds} seconds before trying again. (Max ${MAX_CALLS_PER_MINUTE} calls per minute)`
+      }
+    }
+    
     const imageBuffer = await fs.promises.readFile(imagePath)
     const imageBase64 = imageBuffer.toString('base64')
     
@@ -2034,6 +2112,7 @@ ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detecti
     }
     
     console.log('[DAMAGE COST] Calling GPT-4 Vision for cost estimation...')
+    console.log(`[DAMAGE COST] Rate limit: ${rateLimit.remainingCalls} calls remaining`)
     
     // Calculate total affected area
     const totalAreaPct = detections.reduce((sum: number, d: any) => sum + (d.affected_area_pct || 0), 0)
@@ -2081,7 +2160,7 @@ Respond ONLY with valid JSON in this exact format:
             ]
           }
         ],
-        max_tokens: 500,
+        max_tokens: 2000,
         temperature: 0.3
       })
     })
@@ -2095,8 +2174,21 @@ Respond ONLY with valid JSON in this exact format:
       }
     }
     
+    // Record the API call for rate limiting
+    recordApiCall()
+    
     const data = await response.json()
     let content = data.choices[0].message.content
+    
+    // Track usage stats
+    if (data.usage) {
+      await incrementUsageStats({
+        prompt: data.usage.prompt_tokens || 0,
+        completion: data.usage.completion_tokens || 0,
+        total: data.usage.total_tokens || 0
+      })
+      console.log(`[DAMAGE COST] Tokens used - Prompt: ${data.usage.prompt_tokens}, Completion: ${data.usage.completion_tokens}, Total: ${data.usage.total_tokens}`)
+    }
     
     console.log('[DAMAGE COST] GPT-4 Vision response received')
     
