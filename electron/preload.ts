@@ -72,12 +72,12 @@ contextBridge.exposeInMainWorld('clappper', {
   // Room Detection
   detectRooms: (imagePath: string, modelId?: string, confidence?: number) => ipcRenderer.invoke('room:detect', imagePath, modelId, confidence),
   listRoomModels: () => ipcRenderer.invoke('room:listModels'),
-  identifyRooms: (imagePath: string, detections: any[]) => ipcRenderer.invoke('room:identifyRooms', imagePath, detections),
+  identifyRooms: (imagePathOrBase64: string, detections: any[], isBase64?: boolean) => ipcRenderer.invoke('room:identifyRooms', imagePathOrBase64, detections, isBase64),
   
   // Damage Detection
   detectDamage: (imagePath: string, modelId?: string, confidence?: number) => ipcRenderer.invoke('damage:detect', imagePath, modelId, confidence),
   listDamageModels: () => ipcRenderer.invoke('damage:listModels'),
-  estimateDamageCost: (imagePath: string, detections: any[]) => ipcRenderer.invoke('damage:estimateCost', imagePath, detections),
+  estimateDamageCost: (imagePathOrBase64: string, detections: any[], isBase64?: boolean) => ipcRenderer.invoke('damage:estimateCost', imagePathOrBase64, detections, isBase64),
   
   // Settings
   getOpenAIKey: () => ipcRenderer.invoke('settings:getOpenAIKey'),

@@ -170,7 +170,7 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
   }
 
   const handleEstimateCost = async () => {
-    if (!selectedImage || !result) return
+    if (!selectedImage || !result || !result.annotated_image) return
     
     // Check if API key is set
     if (!hasApiKey) {
@@ -182,7 +182,8 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
     setError(null)
     
     try {
-      const costResult = await window.clappper.estimateDamageCost(selectedImage, result.detections)
+      // Send the annotated image (with bounding boxes) for better visual context
+      const costResult = await window.clappper.estimateDamageCost(result.annotated_image, result.detections, true)
       
       if (!costResult.success) {
         setError(costResult.error || 'Cost estimation failed')

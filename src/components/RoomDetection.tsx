@@ -147,7 +147,7 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
   }
 
   const handleIdentifyRooms = async () => {
-    if (!selectedImage || !result?.detections) return
+    if (!selectedImage || !result?.detections || !result?.annotated_image) return
     
     // Check if API key is set
     if (!hasApiKey) {
@@ -159,7 +159,8 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
     setError(null)
     
     try {
-      const identifyResult = await window.clappper.identifyRooms(selectedImage, result.detections)
+      // Send the annotated image (with bounding boxes) for better visual context
+      const identifyResult = await window.clappper.identifyRooms(result.annotated_image, result.detections, true)
       
       if (!identifyResult.success) {
         setError(identifyResult.error || 'Room identification failed')

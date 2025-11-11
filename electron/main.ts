@@ -2127,7 +2127,7 @@ ipcMain.handle('contractors:find', async (_e: any, zipCode: string, category: st
 })
 
 // Identify rooms using GPT-4 Vision
-ipcMain.handle('room:identifyRooms', async (_e: any, imagePath: string, detections: any[]) => {
+ipcMain.handle('room:identifyRooms', async (_e: any, imagePathOrBase64: string, detections: any[], isBase64?: boolean) => {
   try {
     // Check rate limit first
     const rateLimit = checkRateLimit()
@@ -2138,8 +2138,16 @@ ipcMain.handle('room:identifyRooms', async (_e: any, imagePath: string, detectio
       }
     }
     
-    const imageBuffer = await fs.promises.readFile(imagePath)
-    const imageBase64 = imageBuffer.toString('base64')
+    // Handle base64 or file path
+    let imageBase64: string
+    if (isBase64) {
+      imageBase64 = imagePathOrBase64
+      console.log('[ROOM IDENTIFICATION] Using annotated image (base64) with visible bounding boxes')
+    } else {
+      const imageBuffer = await fs.promises.readFile(imagePathOrBase64)
+      imageBase64 = imageBuffer.toString('base64')
+      console.log('[ROOM IDENTIFICATION] Using raw image from file path')
+    }
     
     // Check for OpenAI API key (from config or env)
     const config = await loadConfig()
@@ -2159,15 +2167,15 @@ ipcMain.handle('room:identifyRooms', async (_e: any, imagePath: string, detectio
       `Room ${idx + 1} (ID: ${det.id}): Bounding box at [${det.bounding_box.join(', ')}]`
     ).join('\n')
     
-    const prompt = `You are analyzing a floor plan image with detected room boundaries marked by colored boxes.
+    const prompt = `You are analyzing a floor plan image with detected room boundaries. The image shows colored bounding boxes around each detected room - you can see these boxes visually in the image.
 
-Detected Rooms:
+Detected Rooms (with visible bounding boxes):
 ${roomsInfo}
 
 For each room, analyze its:
-- Shape and proportions
+- Shape and proportions (visible in the colored box)
 - Location relative to other rooms
-- Typical fixtures or features visible
+- Typical fixtures or features visible within the box
 - Common architectural patterns
 
 Identify the room type for each detected room. Common types include: kitchen, bathroom, bedroom, living room, dining room, hallway, closet, laundry room, garage, office, etc.
@@ -2271,7 +2279,7 @@ Use the actual room IDs provided above. Be specific with room types when confide
 })
 
 // Estimate damage cost using GPT-4 Vision
-ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detections: any[]) => {
+ipcMain.handle('damage:estimateCost', async (_e: any, imagePathOrBase64: string, detections: any[], isBase64?: boolean) => {
   try {
     // Check rate limit first
     const rateLimit = checkRateLimit()
@@ -2282,8 +2290,16 @@ ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detecti
       }
     }
     
-    const imageBuffer = await fs.promises.readFile(imagePath)
-    const imageBase64 = imageBuffer.toString('base64')
+    // Handle base64 or file path
+    let imageBase64: string
+    if (isBase64) {
+      imageBase64 = imagePathOrBase64
+      console.log('[DAMAGE COST] Using annotated image (base64) with visible bounding boxes')
+    } else {
+      const imageBuffer = await fs.promises.readFile(imagePathOrBase64)
+      imageBase64 = imageBuffer.toString('base64')
+      console.log('[DAMAGE COST] Using raw image from file path')
+    }
     
     // Check for OpenAI API key (from config or env)
     const config = await loadConfig()
@@ -2301,12 +2317,12 @@ ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detecti
     // Calculate total affected area
     const totalAreaPct = detections.reduce((sum: number, d: any) => sum + (d.affected_area_pct || 0), 0)
     
-    const prompt = `You are an experienced roofing contractor. Analyze this roof damage image with YOLO detection annotations (green boxes).
+    const prompt = `You are an experienced roofing contractor. Analyze this roof damage image. The image shows damage areas marked with colored bounding boxes - you can see these boxes visually overlaid on the roof.
 
 Detected damage areas: ${detections.length}
 Total affected area: ${totalAreaPct.toFixed(2)}% of image
 
-Provide a realistic repair cost estimate for this roof damage including:
+Look at the visual damage within each bounding box and provide a realistic repair cost estimate including:
 1. Labor costs (hourly rate × estimated hours)
 2. Materials costs (shingles, underlayment, nails, etc.)
 3. Disposal/dump fees for old materials

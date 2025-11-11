@@ -92,11 +92,11 @@ declare global {
         error?: string;
       }>
       listRoomModels: () => Promise<Array<{ id: string; name: string; path: string }>>
-      identifyRooms: (imagePath: string, detections: any[]) => Promise<{
-        success: boolean;
-        room_labels?: Record<string, string>;
-        error?: string;
-      }>
+    identifyRooms: (imagePathOrBase64: string, detections: any[], isBase64?: boolean) => Promise<{
+      success: boolean;
+      room_labels?: Record<string, string>;
+      error?: string;
+    }>
       
       // Damage Detection
       detectDamage: (imagePath: string, modelId?: string, confidence?: number) => Promise<{
@@ -122,7 +122,7 @@ declare global {
         error?: string;
       }>
       listDamageModels: () => Promise<Array<{ id: string; name: string; path: string }>>
-      estimateDamageCost: (imagePath: string, detections: any[]) => Promise<{
+      estimateDamageCost: (imagePathOrBase64: string, detections: any[], isBase64?: boolean) => Promise<{
         success: boolean;
         cost_estimate?: {
           labor_usd: number;
