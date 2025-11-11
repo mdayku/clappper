@@ -1983,3 +1983,152 @@ ipcMain.handle('damage:detect', async (_e: any, imagePath: string, modelId?: str
   }
 })
 
+// Settings storage helpers
+const getConfigPath = () => {
+  const userDataPath = app.getPath('userData')
+  return path.join(userDataPath, 'config.json')
+}
+
+const loadConfig = async (): Promise<any> => {
+  try {
+    const configPath = getConfigPath()
+    const data = await fs.promises.readFile(configPath, 'utf-8')
+    return JSON.parse(data)
+  } catch (error) {
+    return {}
+  }
+}
+
+const saveConfig = async (config: any): Promise<void> => {
+  const configPath = getConfigPath()
+  await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
+}
+
+// Settings IPC handlers
+ipcMain.handle('settings:getOpenAIKey', async () => {
+  const config = await loadConfig()
+  return config.openai_api_key || null
+})
+
+ipcMain.handle('settings:setOpenAIKey', async (_e: any, apiKey: string) => {
+  const config = await loadConfig()
+  config.openai_api_key = apiKey
+  await saveConfig(config)
+  return { success: true }
+})
+
+// Estimate damage cost using GPT-4 Vision
+ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detections: any[]) => {
+  try {
+    const imageBuffer = await fs.promises.readFile(imagePath)
+    const imageBase64 = imageBuffer.toString('base64')
+    
+    // Check for OpenAI API key (from config or env)
+    const config = await loadConfig()
+    const apiKey = config.openai_api_key || process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'OpenAI API key not configured. Please set your API key in settings.'
+      }
+    }
+    
+    console.log('[DAMAGE COST] Calling GPT-4 Vision for cost estimation...')
+    
+    // Calculate total affected area
+    const totalAreaPct = detections.reduce((sum: number, d: any) => sum + (d.affected_area_pct || 0), 0)
+    
+    const prompt = `You are an experienced roofing contractor. Analyze this roof damage image with YOLO detection annotations (green boxes).
+
+Detected damage areas: ${detections.length}
+Total affected area: ${totalAreaPct.toFixed(2)}% of image
+
+Provide a realistic repair cost estimate for this roof damage including:
+1. Labor costs (hourly rate × estimated hours)
+2. Materials costs (shingles, underlayment, nails, etc.)
+3. Disposal/dump fees for old materials
+4. Contingency buffer (10-15%)
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "labor_usd": <number>,
+  "materials_usd": <number>,
+  "disposal_usd": <number>,
+  "contingency_usd": <number>,
+  "total_usd": <number>,
+  "assumptions": "<brief explanation of your estimate>"
+}`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.3
+      })
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[DAMAGE COST] OpenAI API error:', errorText)
+      return {
+        success: false,
+        error: `OpenAI API error: ${response.status} ${response.statusText}`
+      }
+    }
+    
+    const data = await response.json()
+    let content = data.choices[0].message.content
+    
+    console.log('[DAMAGE COST] GPT-4 Vision response received')
+    
+    // Try to extract JSON from markdown code blocks if present
+    if (content.includes('```json')) {
+      content = content.split('```json')[1].split('```')[0].trim()
+    } else if (content.includes('```')) {
+      content = content.split('```')[1].split('```')[0].trim()
+    }
+    
+    const costData = JSON.parse(content)
+    
+    // Validate required fields
+    const requiredFields = ['labor_usd', 'materials_usd', 'disposal_usd', 'contingency_usd', 'total_usd', 'assumptions']
+    if (requiredFields.every(field => field in costData)) {
+      return {
+        success: true,
+        cost_estimate: costData
+      }
+    } else {
+      return {
+        success: false,
+        error: 'GPT-4 Vision response missing required fields'
+      }
+    }
+    
+  } catch (error) {
+    console.error('[DAMAGE COST] Error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+})
+

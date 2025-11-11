@@ -116,6 +116,22 @@ declare global {
         error?: string;
       }>
       listDamageModels: () => Promise<Array<{ id: string; name: string; path: string }>>
+      estimateDamageCost: (imagePath: string, detections: any[]) => Promise<{
+        success: boolean;
+        cost_estimate?: {
+          labor_usd: number;
+          materials_usd: number;
+          disposal_usd: number;
+          contingency_usd: number;
+          total_usd: number;
+          assumptions: string;
+        };
+        error?: string;
+      }>
+      
+      // Settings
+      getOpenAIKey: () => Promise<string | null>
+      setOpenAIKey: (apiKey: string) => Promise<{ success: boolean }>
     }
   }
 }

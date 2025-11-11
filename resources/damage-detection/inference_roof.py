@@ -15,6 +15,14 @@ from PIL import Image
 import numpy as np
 import cv2
 
+# Optional: OpenAI for GPT-4 Vision cost estimation
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    sys.stderr.write("OpenAI library not available - using heuristic cost estimates\n")
+
 # Check for bundled models path (from Electron) - PRIMARY source
 BUNDLED_MODELS_PATH = os.environ.get('BUNDLED_MODELS_PATH')
 if BUNDLED_MODELS_PATH:
@@ -173,8 +181,95 @@ def calculate_severity(bbox, img_width, img_height):
     img_area = img_width * img_height
     return min(1.0, max(0.0, bbox_area / img_area)) if img_area > 0 else 0.0
 
+def estimate_cost_with_gpt_vision(image_base64, detections, img_width, img_height):
+    """Use GPT-4 Vision to estimate repair costs based on the annotated image"""
+    try:
+        if not OPENAI_AVAILABLE:
+            sys.stderr.write("OpenAI not available, using fallback\n")
+            return None
+            
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if not api_key:
+            sys.stderr.write("OPENAI_API_KEY not found, using fallback\n")
+            return None
+        
+        sys.stderr.write(f"Calling GPT-4 Vision for cost estimation ({len(detections)} damage areas detected)...\n")
+        
+        client = OpenAI(api_key=api_key)
+        
+        # Calculate total affected area
+        total_area_pct = sum(d.get('affected_area_pct', 0) for d in detections)
+        
+        prompt = f"""You are an experienced roofing contractor. Analyze this roof damage image with YOLO detection annotations.
+
+Detected damage areas: {len(detections)}
+Total affected area: {total_area_pct:.2f}% of image
+Image dimensions: {img_width}x{img_height} pixels
+
+Provide a realistic repair cost estimate for this roof damage including:
+1. Labor costs (hourly rate × estimated hours)
+2. Materials costs (shingles, underlayment, nails, etc.)
+3. Disposal/dump fees for old materials
+4. Contingency buffer (10-15%)
+
+Respond ONLY with valid JSON in this exact format:
+{{
+  "labor_usd": <number>,
+  "materials_usd": <number>,
+  "disposal_usd": <number>,
+  "contingency_usd": <number>,
+  "total_usd": <number>,
+  "assumptions": "<brief explanation of your estimate>"
+}}"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o",  # or gpt-4-vision-preview
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_base64}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        # Parse the JSON response
+        content = response.choices[0].message.content
+        sys.stderr.write(f"GPT-4 Vision response: {content[:200]}...\n")
+        
+        # Try to extract JSON from markdown code blocks if present
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+        
+        cost_data = json.loads(content)
+        
+        # Validate required fields
+        required_fields = ['labor_usd', 'materials_usd', 'disposal_usd', 'contingency_usd', 'total_usd', 'assumptions']
+        if all(field in cost_data for field in required_fields):
+            sys.stderr.write("GPT-4 Vision cost estimation successful!\n")
+            return cost_data
+        else:
+            sys.stderr.write(f"GPT-4 Vision response missing required fields\n")
+            return None
+            
+    except Exception as e:
+        sys.stderr.write(f"GPT-4 Vision cost estimation failed: {e}\n")
+        traceback.print_exc(file=sys.stderr)
+        return None
+
 def estimate_cost(detections):
-    """Estimate repair cost from detections"""
+    """Fallback heuristic cost estimation from detections"""
     has_findings = len(detections) > 0
     setup_min = SETUP_MIN_USD if has_findings else 0.00
     
@@ -199,7 +294,7 @@ def estimate_cost(detections):
         "disposal_usd": round(disposal, 2),
         "contingency_usd": round(contingency, 2),
         "total_usd": round(total, 2),
-        "assumptions": "Heuristic: class base + area severity + setup minimum + 10% contingency; demo only."
+        "assumptions": "Heuristic fallback: class base + area severity + setup minimum + 10% contingency."
     }
 
 def perform_inference(image_data, model_id='default', conf_threshold=0.2):

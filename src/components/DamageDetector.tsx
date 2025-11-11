@@ -39,6 +39,10 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
   const [confidence, setConfidence] = useState<number>(0.2)
   const [confidenceInput, setConfidenceInput] = useState<string>('0.20')
   const [confidenceError, setConfidenceError] = useState<string | null>(null)
+  const [estimatingCost, setEstimatingCost] = useState(false)
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [hasApiKey, setHasApiKey] = useState(false)
 
   const loadModels = React.useCallback(async () => {
     setLoadingModels(true)
@@ -63,6 +67,16 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
       loadModels()
     }
   }, [isOpen, availableModels.length, loadModels])
+
+  // Check for API key on mount
+  useEffect(() => {
+    if (isOpen) {
+      window.clappper.getOpenAIKey().then((key: string | null) => {
+        setHasApiKey(!!key)
+        if (key) setApiKeyInput(key)
+      }).catch(() => setHasApiKey(false))
+    }
+  }, [isOpen])
 
   const handleConfidenceSliderChange = (value: number) => {
     setConfidence(value)
@@ -127,6 +141,52 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
       setError(`Detection failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setDetecting(false)
+    }
+  }
+
+  const handleEstimateCost = async () => {
+    if (!selectedImage || !result) return
+    
+    // Check if API key is set
+    if (!hasApiKey) {
+      setShowApiKeyDialog(true)
+      return
+    }
+    
+    setEstimatingCost(true)
+    setError(null)
+    
+    try {
+      const costResult = await window.clappper.estimateDamageCost(selectedImage, result.detections)
+      
+      if (!costResult.success) {
+        setError(costResult.error || 'Cost estimation failed')
+        if (costResult.error?.includes('API key')) {
+          setShowApiKeyDialog(true)
+        }
+        return
+      }
+      
+      // Update result with new cost estimate
+      setResult({
+        ...result,
+        cost_estimate: costResult.cost_estimate
+      })
+    } catch (err) {
+      setError(`Cost estimation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setEstimatingCost(false)
+    }
+  }
+
+  const handleSaveApiKey = async () => {
+    try {
+      await window.clappper.setOpenAIKey(apiKeyInput)
+      setHasApiKey(true)
+      setShowApiKeyDialog(false)
+      setError(null)
+    } catch (err) {
+      setError(`Failed to save API key: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 
@@ -357,6 +417,30 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                   Found {result.detections.length} damage area{result.detections.length !== 1 ? 's' : ''}
                 </div>
                 
+                {/* Estimate Cost Button */}
+                <button
+                  onClick={handleEstimateCost}
+                  disabled={estimatingCost}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    border: 'none',
+                    borderRadius: 4,
+                    background: estimatingCost ? '#ccc' : '#ffc107',
+                    color: estimatingCost ? '#666' : '#000',
+                    cursor: estimatingCost ? 'not-allowed' : 'pointer',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {estimatingCost ? '🤖 Estimating...' : '🤖 Estimate Cost with AI'}
+                </button>
+
+                {!hasApiKey && (
+                  <div style={{ fontSize: 11, color: '#856404', fontStyle: 'italic' }}>
+                    💡 OpenAI API key required
+                  </div>
+                )}
+                
                 {/* Download Button */}
                 {result.annotated_image && (
                   <button
@@ -447,28 +531,30 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                     <div style={{
                       marginTop: 8,
                       padding: 8,
-                      background: '#fff3cd',
-                      border: '1px solid #ffc107',
+                      background: result.cost_estimate.assumptions.includes('GPT') || result.cost_estimate.assumptions.includes('contractor') ? '#d4edda' : '#fff3cd',
+                      border: result.cost_estimate.assumptions.includes('GPT') || result.cost_estimate.assumptions.includes('contractor') ? '1px solid #c3e6cb' : '1px solid #ffc107',
                       borderRadius: 4
                     }}>
-                      <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#856404', fontSize: 11 }}>💰 Cost Estimate (Demo)</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4, color: result.cost_estimate.assumptions.includes('GPT') || result.cost_estimate.assumptions.includes('contractor') ? '#155724' : '#856404', fontSize: 11 }}>
+                        💰 Cost Estimate {result.cost_estimate.assumptions.includes('GPT') || result.cost_estimate.assumptions.includes('contractor') ? '(AI-Generated)' : '(Demo)'}
+                      </div>
                       <div style={{ fontSize: 11, color: '#495057' }}>
                         <div>Labor: ${result.cost_estimate.labor_usd.toFixed(2)}</div>
                         <div>Materials: ${result.cost_estimate.materials_usd.toFixed(2)}</div>
                         <div>Disposal: ${result.cost_estimate.disposal_usd.toFixed(2)}</div>
                         <div>Contingency: ${result.cost_estimate.contingency_usd.toFixed(2)}</div>
-                        <div style={{ fontWeight: 'bold', marginTop: 4, paddingTop: 4, borderTop: '1px solid #ffc107' }}>
+                        <div style={{ fontWeight: 'bold', marginTop: 4, paddingTop: 4, borderTop: '1px solid ' + (result.cost_estimate.assumptions.includes('GPT') || result.cost_estimate.assumptions.includes('contractor') ? '#c3e6cb' : '#ffc107') }}>
                           Total: ${result.cost_estimate.total_usd.toFixed(2)}
                         </div>
                         <div style={{ 
                           fontSize: 9, 
-                          color: '#856404', 
+                          color: '#6c757d', 
                           marginTop: 6,
                           paddingTop: 6,
-                          borderTop: '1px dashed #ffc107',
+                          borderTop: '1px dashed ' + (result.cost_estimate.assumptions.includes('GPT') || result.cost_estimate.assumptions.includes('contractor') ? '#c3e6cb' : '#ffc107'),
                           fontStyle: 'italic'
                         }}>
-                          ⚠️ Demo purposes only. This model was trained on limited data and cost estimates are heuristic-based placeholders, not professional assessments.
+                          {result.cost_estimate.assumptions}
                         </div>
                       </div>
                     </div>
@@ -519,6 +605,87 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
           </div>
         </div>
       </div>
+
+      {/* API Key Configuration Dialog */}
+      {showApiKeyDialog && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 8,
+            padding: 24,
+            maxWidth: 500,
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>🔑 OpenAI API Key Required</h3>
+            <p style={{ fontSize: 14, color: '#495057', marginBottom: 16 }}>
+              To use AI-powered cost estimation, please enter your OpenAI API key. 
+              Your key will be stored locally and never shared.
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="sk-..."
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 12, color: '#6c757d', marginBottom: 16 }}>
+              Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: '#007bff' }}>platform.openai.com/api-keys</a>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowApiKeyDialog(false)}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  background: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveApiKey}
+                disabled={!apiKeyInput.trim()}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 14,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: apiKeyInput.trim() ? '#28a745' : '#ccc',
+                  color: 'white',
+                  cursor: apiKeyInput.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: 'bold'
+                }}
+              >
+                Save Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

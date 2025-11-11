@@ -71,6 +71,11 @@ contextBridge.exposeInMainWorld('clappper', {
   
   // Damage Detection
   detectDamage: (imagePath: string, modelId?: string, confidence?: number) => ipcRenderer.invoke('damage:detect', imagePath, modelId, confidence),
-  listDamageModels: () => ipcRenderer.invoke('damage:listModels')
+  listDamageModels: () => ipcRenderer.invoke('damage:listModels'),
+  estimateDamageCost: (imagePath: string, detections: any[]) => ipcRenderer.invoke('damage:estimateCost', imagePath, detections),
+  
+  // Settings
+  getOpenAIKey: () => ipcRenderer.invoke('settings:getOpenAIKey'),
+  setOpenAIKey: (apiKey: string) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey)
 })
 
