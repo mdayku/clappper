@@ -162,7 +162,8 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
   }
 
   const formatClassName = (cls: string) => {
-    return cls.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+    // Always show "Roof Damage" regardless of actual class
+    return 'Roof Damage'
   }
 
   if (!isOpen) return null
@@ -450,7 +451,7 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                       border: '1px solid #ffc107',
                       borderRadius: 4
                     }}>
-                      <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#856404', fontSize: 11 }}>💰 Cost Estimate</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#856404', fontSize: 11 }}>💰 Cost Estimate (Demo)</div>
                       <div style={{ fontSize: 11, color: '#495057' }}>
                         <div>Labor: ${result.cost_estimate.labor_usd.toFixed(2)}</div>
                         <div>Materials: ${result.cost_estimate.materials_usd.toFixed(2)}</div>
@@ -459,8 +460,15 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                         <div style={{ fontWeight: 'bold', marginTop: 4, paddingTop: 4, borderTop: '1px solid #ffc107' }}>
                           Total: ${result.cost_estimate.total_usd.toFixed(2)}
                         </div>
-                        <div style={{ fontSize: 10, color: '#6c757d', marginTop: 4 }}>
-                          {result.cost_estimate.assumptions}
+                        <div style={{ 
+                          fontSize: 9, 
+                          color: '#856404', 
+                          marginTop: 6,
+                          paddingTop: 6,
+                          borderTop: '1px dashed #ffc107',
+                          fontStyle: 'italic'
+                        }}>
+                          ⚠️ Demo purposes only. This model was trained on limited data and cost estimates are heuristic-based placeholders, not professional assessments.
                         </div>
                       </div>
                     </div>
