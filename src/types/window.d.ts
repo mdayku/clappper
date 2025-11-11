@@ -92,6 +92,11 @@ declare global {
         error?: string;
       }>
       listRoomModels: () => Promise<Array<{ id: string; name: string; path: string }>>
+      identifyRooms: (imagePath: string, detections: any[]) => Promise<{
+        success: boolean;
+        room_labels?: Record<string, string>;
+        error?: string;
+      }>
       
       // Damage Detection
       detectDamage: (imagePath: string, modelId?: string, confidence?: number) => Promise<{

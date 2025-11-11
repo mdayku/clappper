@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('clappper', {
   // Room Detection
   detectRooms: (imagePath: string, modelId?: string, confidence?: number) => ipcRenderer.invoke('room:detect', imagePath, modelId, confidence),
   listRoomModels: () => ipcRenderer.invoke('room:listModels'),
+  identifyRooms: (imagePath: string, detections: any[]) => ipcRenderer.invoke('room:identifyRooms', imagePath, detections),
   
   // Damage Detection
   detectDamage: (imagePath: string, modelId?: string, confidence?: number) => ipcRenderer.invoke('damage:detect', imagePath, modelId, confidence),

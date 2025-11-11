@@ -2126,6 +2126,148 @@ ipcMain.handle('contractors:find', async (_e: any, zipCode: string, category: st
   }
 })
 
+// Identify rooms using GPT-4 Vision
+ipcMain.handle('room:identifyRooms', async (_e: any, imagePath: string, detections: any[]) => {
+  try {
+    // Check rate limit first
+    const rateLimit = checkRateLimit()
+    if (!rateLimit.allowed) {
+      return {
+        success: false,
+        error: `Rate limit exceeded. Please wait ${rateLimit.resetInSeconds} seconds before trying again. (Max ${MAX_CALLS_PER_MINUTE} calls per minute)`
+      }
+    }
+    
+    const imageBuffer = await fs.promises.readFile(imagePath)
+    const imageBase64 = imageBuffer.toString('base64')
+    
+    // Check for OpenAI API key (from config or env)
+    const config = await loadConfig()
+    const apiKey = config.openai_api_key || process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'OpenAI API key not configured. Please set your API key in settings.'
+      }
+    }
+    
+    console.log('[ROOM IDENTIFICATION] Calling GPT-4 Vision to identify rooms...')
+    console.log(`[ROOM IDENTIFICATION] Rate limit: ${rateLimit.remainingCalls} calls remaining`)
+    
+    // Build prompt with detection info
+    const roomsInfo = detections.map((det: any, idx: number) => 
+      `Room ${idx + 1} (ID: ${det.id}): Bounding box at [${det.bounding_box.join(', ')}]`
+    ).join('\n')
+    
+    const prompt = `You are analyzing a floor plan image with detected room boundaries marked by colored boxes.
+
+Detected Rooms:
+${roomsInfo}
+
+For each room, analyze its:
+- Shape and proportions
+- Location relative to other rooms
+- Typical fixtures or features visible
+- Common architectural patterns
+
+Identify the room type for each detected room. Common types include: kitchen, bathroom, bedroom, living room, dining room, hallway, closet, laundry room, garage, office, etc.
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "room_labels": {
+    "${detections[0]?.id || 'room_id'}": "room_type",
+    "${detections[1]?.id || 'room_id'}": "room_type"
+  }
+}
+
+Use the actual room IDs provided above. Be specific with room types (e.g., "master bedroom" vs "bedroom", "powder room" vs "full bathroom").`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 4096,
+        temperature: 0.3
+      })
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[ROOM IDENTIFICATION] OpenAI API error:', errorText)
+      return {
+        success: false,
+        error: `OpenAI API error: ${response.status} ${response.statusText}`
+      }
+    }
+    
+    // Record the API call for rate limiting
+    recordApiCall()
+    
+    const data = await response.json()
+    let content = data.choices[0].message.content
+    
+    // Track usage stats
+    if (data.usage) {
+      await incrementUsageStats({
+        prompt: data.usage.prompt_tokens || 0,
+        completion: data.usage.completion_tokens || 0,
+        total: data.usage.total_tokens || 0
+      })
+      console.log(`[ROOM IDENTIFICATION] Tokens used - Prompt: ${data.usage.prompt_tokens}, Completion: ${data.usage.completion_tokens}, Total: ${data.usage.total_tokens}`)
+    }
+    
+    console.log('[ROOM IDENTIFICATION] GPT-4 Vision response received')
+    console.log('[ROOM IDENTIFICATION] Raw content:', content)
+    
+    // Try to extract JSON from markdown code blocks if present
+    if (content.includes('```json')) {
+      content = content.split('```json')[1].split('```')[0].trim()
+    } else if (content.includes('```')) {
+      content = content.split('```')[1].split('```')[0].trim()
+    }
+    
+    const parsedData = JSON.parse(content)
+    
+    if (parsedData.room_labels) {
+      console.log('[ROOM IDENTIFICATION] ✅ Room labels identified:', parsedData.room_labels)
+      return {
+        success: true,
+        room_labels: parsedData.room_labels
+      }
+    } else {
+      return {
+        success: false,
+        error: 'GPT-4 Vision response missing room_labels field'
+      }
+    }
+    
+  } catch (error) {
+    console.error('[ROOM IDENTIFICATION] ❌ Error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+})
+
 // Estimate damage cost using GPT-4 Vision
 ipcMain.handle('damage:estimateCost', async (_e: any, imagePath: string, detections: any[]) => {
   try {
