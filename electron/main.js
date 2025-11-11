@@ -1829,41 +1829,6 @@ const incrementUsageStats = async (tokensUsed) => {
     config.usage_stats.last_call = new Date().toISOString();
     await saveConfig(config);
 };
-// Helper: Relabel image with custom labels using Python script
-const relabelImage = async (imageBase64, detections, labels, taskType = 'room') => {
-    return new Promise((resolve, reject) => {
-        const resourcesPath = process.resourcesPath;
-        const scriptDir = taskType === 'room' ? 'room-detection' : 'damage-detection';
-        const scriptPath = path.join(resourcesPath, scriptDir, 'relabel_image.py');
-        const pythonProcess = spawn('python', [scriptPath], {
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-        const input = JSON.stringify({
-            image: imageBase64,
-            detections: detections,
-            labels: labels
-        });
-        pythonProcess.stdin.write(input);
-        pythonProcess.stdin.end();
-        let stdout = '';
-        let stderr = '';
-        pythonProcess.stdout.on('data', (data) => { stdout += data.toString(); });
-        pythonProcess.stderr.on('data', (data) => { stderr += data.toString(); });
-        pythonProcess.on('close', (code) => {
-            if (code !== 0) {
-                reject(new Error(`Relabel script failed: ${stderr}`));
-                return;
-            }
-            try {
-                const result = JSON.parse(stdout);
-                resolve(result.annotated_image);
-            }
-            catch (err) {
-                reject(new Error('Failed to parse relabel output'));
-            }
-        });
-    });
-};
 // Settings IPC handlers
 ipcMain.handle('settings:getOpenAIKey', async () => {
     const config = await loadConfig();
@@ -2031,24 +1996,10 @@ Use the actual room IDs provided above. Be specific with room types when confide
         const parsedData = JSON.parse(content);
         if (parsedData.room_labels) {
             console.log('[ROOM IDENTIFICATION] ✅ Room labels identified:', parsedData.room_labels);
-            // Redraw image with AI labels
-            try {
-                console.log('[ROOM IDENTIFICATION] Redrawing image with AI labels...');
-                const relabeledImage = await relabelImage(imageBase64, detections, parsedData.room_labels);
-                return {
-                    success: true,
-                    room_labels: parsedData.room_labels,
-                    relabeled_image: relabeledImage
-                };
-            }
-            catch (relabelError) {
-                console.error('[ROOM IDENTIFICATION] Failed to relabel image:', relabelError);
-                // Still return success, just without relabeled image
-                return {
-                    success: true,
-                    room_labels: parsedData.room_labels
-                };
-            }
+            return {
+                success: true,
+                room_labels: parsedData.room_labels
+            };
         }
         else {
             return {
@@ -2105,24 +2056,21 @@ ipcMain.handle('damage:estimateCost', async (_e, imagePathOrBase64, detections, 
 Detected damage areas: ${detections.length}
 Total affected area: ${totalAreaPct.toFixed(2)}% of image
 
-For each numbered bounding box (0, 1, 2, etc.), identify the SPECIFIC type of damage visible. Then provide a realistic repair cost estimate.
+Look at the visual damage within each bounding box and provide a realistic repair cost estimate including:
+1. Labor costs (hourly rate × estimated hours)
+2. Materials costs (shingles, underlayment, nails, etc.)
+3. Disposal/dump fees for old materials
+4. Contingency buffer (10-15%)
 
 Respond ONLY with valid JSON in this exact format:
 {
-  "damage_types": {
-    "0": "missing shingles",
-    "1": "cracked shingles",
-    "2": "water damage"
-  },
   "labor_usd": <number>,
   "materials_usd": <number>,
   "disposal_usd": <number>,
   "contingency_usd": <number>,
   "total_usd": <number>,
   "assumptions": "<brief explanation of your estimate>"
-}
-
-Common damage types: missing shingles, cracked/broken shingles, curled shingles, water damage, moss/algae growth, punctures/holes, flashing damage, granule loss, storm damage.`;
+}`;
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -2188,26 +2136,10 @@ Common damage types: missing shingles, cracked/broken shingles, curled shingles,
         const requiredFields = ['labor_usd', 'materials_usd', 'disposal_usd', 'contingency_usd', 'total_usd', 'assumptions'];
         const missingFields = requiredFields.filter(field => !(field in costData));
         if (missingFields.length === 0) {
-            console.log('[DAMAGE COST] ✅ All fields validated');
-            // Relabel image with specific damage types if provided
-            let relabeledImage = undefined;
-            if (costData.damage_types && Object.keys(costData.damage_types).length > 0) {
-                try {
-                    console.log('[DAMAGE COST] Relabeling image with specific damage types:', costData.damage_types);
-                    relabeledImage = await relabelImage(imageBase64, detections, costData.damage_types, 'damage');
-                    console.log('[DAMAGE COST] ✅ Image relabeled with specific damage types');
-                }
-                catch (relabelError) {
-                    console.error('[DAMAGE COST] Failed to relabel image:', relabelError);
-                    // Continue without relabeled image
-                }
-            }
-            console.log('[DAMAGE COST] ✅ Returning cost estimate');
+            console.log('[DAMAGE COST] ✅ All fields validated, returning cost estimate');
             return {
                 success: true,
-                cost_estimate: costData,
-                damage_types: costData.damage_types,
-                relabeled_image: relabeledImage
+                cost_estimate: costData
             };
         }
         else {
