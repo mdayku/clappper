@@ -95,6 +95,7 @@ declare global {
     identifyRooms: (imagePathOrBase64: string, detections: any[], isBase64?: boolean) => Promise<{
       success: boolean;
       room_labels?: Record<string, string>;
+      relabeled_image?: string;
       error?: string;
     }>
       
@@ -132,6 +133,8 @@ declare global {
           total_usd: number;
           assumptions: string;
         };
+        damage_types?: Record<string, string>;
+        relabeled_image?: string;
         error?: string;
       }>
       

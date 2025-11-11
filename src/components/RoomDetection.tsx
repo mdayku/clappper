@@ -179,9 +179,11 @@ export default function RoomDetection({ isOpen, onClose }: RoomDetectionProps) {
         name_hint: labels[det.id] || det.name_hint
       }))
       
+      // Update result with AI labels and relabeled image
       setResult({
         ...result,
-        detections: updatedDetections
+        detections: updatedDetections,
+        annotated_image: identifyResult.relabeled_image || result.annotated_image
       })
     } catch (err) {
       setError(`Room identification failed: ${err instanceof Error ? err.message : 'Unknown error'}`)

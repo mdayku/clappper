@@ -193,10 +193,11 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
         return
       }
       
-      // Update result with new cost estimate
+      // Update result with new cost estimate and relabeled image if available
       setResult({
         ...result,
-        cost_estimate: costResult.cost_estimate
+        cost_estimate: costResult.cost_estimate,
+        annotated_image: costResult.relabeled_image || result.annotated_image
       })
       
       // Refresh usage stats after successful call
