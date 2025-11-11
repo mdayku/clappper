@@ -273,7 +273,7 @@ const getHardwareEncoder = async (): Promise<{ codec: string; preset: string; cr
       await new Promise<void>((resolve, reject) => {
         const testProcess = spawn(ffmpegPath, ['-hide_banner', '-h', `encoder=${encoder.codec}`])
         
-        testProcess.on('close', (code) => {
+        testProcess.on('close', (code: number | null) => {
           if (code === 0) {
             resolve()
           } else {
