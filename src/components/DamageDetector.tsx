@@ -174,304 +174,342 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      background: 'rgba(0,0,0,0.5)',
       display: 'flex',
-      justifyContent: 'center',
       alignItems: 'center',
+      justifyContent: 'center',
       zIndex: 1000
     }}>
       <div style={{
-        backgroundColor: '#1e1e1e',
-        borderRadius: '8px',
-        padding: '24px',
-        maxWidth: '1200px',
+        background: 'white',
+        borderRadius: 8,
+        padding: 24,
+        minWidth: 800,
+        maxWidth: '90vw',
         maxHeight: '90vh',
-        width: '90%',
-        overflow: 'auto',
-        color: '#fff'
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ margin: 0 }}>🏠 Damage Detection</h2>
-          <button onClick={onClose} style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#fff',
-            fontSize: '24px',
-            cursor: 'pointer',
-            padding: '0 8px'
-          }}>×</button>
-        </div>
-
-        {/* Model Selector */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-            Model:
-          </label>
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={loadingModels || detecting}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 'bold' }}>🏚️ Damage Detection</h2>
+          <button
+            onClick={onClose}
             style={{
-              width: '100%',
-              padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #444',
-              backgroundColor: '#2a2a2a',
-              color: '#fff'
+              padding: '4px 12px',
+              fontSize: 14,
+              border: '1px solid #ccc',
+              borderRadius: 4,
+              background: 'white',
+              cursor: 'pointer'
             }}
           >
-            {availableModels.length === 0 ? (
-              <option value="default">Default Model</option>
-            ) : (
-              availableModels.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))
+            ✕ Close
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          {/* Left side - Controls */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 200 }}>
+            {/* Model Selector */}
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 'bold', marginBottom: 6, color: '#495057' }}>
+                Model
+              </label>
+              {loadingModels ? (
+                <div style={{ fontSize: 12, color: '#666', padding: '8px 0' }}>Loading models...</div>
+              ) : availableModels.length > 0 ? (
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={detecting}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    border: '1px solid #ccc',
+                    borderRadius: 4,
+                    background: 'white',
+                    cursor: detecting ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ fontSize: 12, color: '#999', padding: '8px 0' }}>
+                  No models found. Using default.
+                </div>
+              )}
+            </div>
+
+            {/* Confidence Threshold */}
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 'bold', marginBottom: 6, color: '#495057' }}>
+                Confidence Threshold: {confidence.toFixed(2)}
+              </label>
+              <input
+                type="range"
+                min="0.01"
+                max="0.99"
+                step="0.01"
+                value={confidence}
+                onChange={(e) => handleConfidenceSliderChange(parseFloat(e.target.value))}
+                disabled={detecting}
+                style={{
+                  width: '100%',
+                  marginBottom: 8,
+                  cursor: detecting ? 'not-allowed' : 'pointer'
+                }}
+              />
+              <input
+                type="text"
+                value={confidenceInput}
+                onChange={(e) => handleConfidenceInputChange(e.target.value)}
+                disabled={detecting}
+                placeholder="0.01 - 0.99"
+                style={{
+                  width: '100%',
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  border: confidenceError ? '1px solid #dc3545' : '1px solid #ccc',
+                  borderRadius: 4,
+                  background: 'white',
+                  cursor: detecting ? 'not-allowed' : 'default'
+                }}
+              />
+              {confidenceError && (
+                <div style={{ fontSize: 11, color: '#dc3545', marginTop: 4 }}>
+                  {confidenceError}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleSelectImage}
+              disabled={detecting}
+              style={{
+                padding: '10px 16px',
+                fontSize: 14,
+                border: 'none',
+                borderRadius: 4,
+                background: '#007bff',
+                color: 'white',
+                cursor: detecting ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {selectedImage ? 'Change Image' : 'Select Image'}
+            </button>
+
+            {selectedImage && (
+              <div style={{ fontSize: 12, color: '#666', wordBreak: 'break-all' }}>
+                {selectedImage.split(/[/\\]/).pop()}
+              </div>
             )}
-          </select>
-          {loadingModels && <p style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>Loading models...</p>}
-        </div>
 
-        {/* Confidence Threshold */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-            Confidence Threshold: {confidence.toFixed(2)}
-          </label>
-          <input
-            type="range"
-            min="0.01"
-            max="0.99"
-            step="0.01"
-            value={confidence}
-            onChange={(e) => handleConfidenceSliderChange(parseFloat(e.target.value))}
-            disabled={detecting}
-            style={{
-              width: '100%',
-              marginBottom: '8px',
-              cursor: detecting ? 'not-allowed' : 'pointer'
-            }}
-          />
-          <input
-            type="text"
-            value={confidenceInput}
-            onChange={(e) => handleConfidenceInputChange(e.target.value)}
-            disabled={detecting}
-            placeholder="0.01 - 0.99"
-            style={{
-              width: '100%',
-              padding: '8px',
-              borderRadius: '4px',
-              border: confidenceError ? '1px solid #ef4444' : '1px solid #444',
-              backgroundColor: '#2a2a2a',
-              color: '#fff',
-              cursor: detecting ? 'not-allowed' : 'default'
-            }}
-          />
-          {confidenceError && (
-            <p style={{ fontSize: '12px', color: '#ef4444', marginTop: '4px', marginBottom: 0 }}>
-              {confidenceError}
-            </p>
-          )}
-        </div>
+            <button
+              onClick={handleDetect}
+              disabled={!selectedImage || detecting}
+              style={{
+                padding: '10px 16px',
+                fontSize: 14,
+                border: 'none',
+                borderRadius: 4,
+                background: selectedImage && !detecting ? '#28a745' : '#ccc',
+                color: 'white',
+                cursor: (selectedImage && !detecting) ? 'pointer' : 'not-allowed',
+                fontWeight: 'bold'
+              }}
+            >
+              {detecting ? 'Detecting...' : 'Detect Damage'}
+            </button>
 
-        {/* Image Selector */}
-        <div style={{ marginBottom: '20px' }}>
-          <button
-            onClick={handleSelectImage}
-            disabled={detecting}
-            style={{
-              padding: '10px 20px',
-              borderRadius: '4px',
-              border: 'none',
-              backgroundColor: '#0066cc',
-              color: '#fff',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            📸 Select Image
-          </button>
-          {selectedImage && (
-            <p style={{ marginTop: '8px', fontSize: '14px', color: '#888' }}>
-              Selected: {selectedImage.split(/[/\\]/).pop()}
-            </p>
-          )}
-        </div>
+            {error && (
+              <div style={{
+                padding: 8,
+                background: '#fee',
+                border: '1px solid #fcc',
+                borderRadius: 4,
+                color: '#c00',
+                fontSize: 12
+              }}>
+                {error}
+              </div>
+            )}
 
-        {/* Detect Button */}
-        {selectedImage && (
-          <button
-            onClick={handleDetect}
-            disabled={detecting}
-            style={{
-              padding: '10px 20px',
-              borderRadius: '4px',
-              border: 'none',
-              backgroundColor: detecting ? '#666' : '#10b981',
-              color: '#fff',
-              cursor: detecting ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              marginBottom: '20px'
-            }}
-          >
-            {detecting ? '🔍 Detecting...' : '🔍 Detect Damage'}
-          </button>
-        )}
-
-        {/* Image Preview / Annotated Image */}
-        {selectedImage && (
-          <div style={{ marginBottom: '20px' }}>
-            {result?.annotated_image ? (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <h4 style={{ margin: 0 }}>Annotated Image:</h4>
+            {result && result.detections.length > 0 && (
+              <>
+                <div style={{
+                  padding: 8,
+                  background: '#d4edda',
+                  border: '1px solid #c3e6cb',
+                  borderRadius: 4,
+                  color: '#155724',
+                  fontSize: 12
+                }}>
+                  Found {result.detections.length} damage area{result.detections.length !== 1 ? 's' : ''}
+                </div>
+                
+                {/* Download Button */}
+                {result.annotated_image && (
                   <button
                     onClick={handleDownloadImage}
                     style={{
-                      padding: '6px 12px',
-                      borderRadius: '4px',
+                      padding: '8px 12px',
+                      fontSize: 13,
                       border: 'none',
-                      backgroundColor: '#0066cc',
-                      color: '#fff',
+                      borderRadius: 4,
+                      background: '#007bff',
+                      color: 'white',
                       cursor: 'pointer',
-                      fontSize: '12px'
+                      fontWeight: 'bold'
                     }}
                   >
-                    💾 Download
+                    📥 Download Image
                   </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Right side - Image and Results */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto', minHeight: 0 }}>
+            {result?.annotated_image ? (
+              <>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#f8f9fa',
+                  borderRadius: 4,
+                  padding: 16,
+                  minHeight: 400,
+                  overflow: 'auto'
+                }}>
+                  <img
+                    src={`data:image/png;base64,${result.annotated_image}`}
+                    alt="Detected damage"
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
                 </div>
+
+                {/* Detections List */}
+                <div style={{
+                  padding: 12,
+                  background: '#f8f9fa',
+                  border: '1px solid #dee2e6',
+                  borderRadius: 4,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  maxHeight: 300,
+                  overflow: 'auto'
+                }}>
+                  <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#495057' }}>Detections:</div>
+                  {result.detections.map((det, i) => (
+                    <div key={i} style={{
+                      padding: '8px',
+                      margin: '4px 0',
+                      border: '1px solid #dee2e6',
+                      borderRadius: 4,
+                      backgroundColor: '#ffffff'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                        <div
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: getSeverityColor(det.severity),
+                            marginRight: '6px'
+                          }}
+                        />
+                        <strong style={{ fontSize: '13px', color: '#495057' }}>{formatClassName(det.cls)}</strong>
+                        <span style={{ marginLeft: '8px', color: '#6c757d', fontSize: '11px' }}>
+                          {(det.conf * 100).toFixed(1)}% conf
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#6c757d', paddingLeft: '14px' }}>
+                        Severity: {(det.severity * 100).toFixed(1)}% • Area: {det.affected_area_pct.toFixed(2)}%
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Cost Estimate */}
+                  {result.cost_estimate && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: 8,
+                      background: '#fff3cd',
+                      border: '1px solid #ffc107',
+                      borderRadius: 4
+                    }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#856404', fontSize: 11 }}>💰 Cost Estimate</div>
+                      <div style={{ fontSize: 11, color: '#495057' }}>
+                        <div>Labor: ${result.cost_estimate.labor_usd.toFixed(2)}</div>
+                        <div>Materials: ${result.cost_estimate.materials_usd.toFixed(2)}</div>
+                        <div>Disposal: ${result.cost_estimate.disposal_usd.toFixed(2)}</div>
+                        <div>Contingency: ${result.cost_estimate.contingency_usd.toFixed(2)}</div>
+                        <div style={{ fontWeight: 'bold', marginTop: 4, paddingTop: 4, borderTop: '1px solid #ffc107' }}>
+                          Total: ${result.cost_estimate.total_usd.toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#6c757d', marginTop: 4 }}>
+                          {result.cost_estimate.assumptions}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : selectedImage ? (
+              <div style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f8f9fa',
+                borderRadius: 4,
+                padding: 16,
+                minHeight: 400,
+                overflow: 'auto'
+              }}>
                 <img
-                  src={`data:image/png;base64,${result.annotated_image}`}
-                  alt="Annotated"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '500px',
-                    borderRadius: '4px',
-                    border: '1px solid #444'
-                  }}
+                  src={`file://${selectedImage}`}
+                  alt="Selected preview"
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                 />
               </div>
             ) : (
-              <img
-                src={`file://${selectedImage}`}
-                alt="Selected preview"
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '400px',
-                  borderRadius: '4px',
-                  border: '1px solid #444'
-                }}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <div style={{
-            padding: '12px',
-            backgroundColor: '#ef4444',
-            borderRadius: '4px',
-            marginBottom: '20px'
-          }}>
-            <strong>Error:</strong> {error}
-          </div>
-        )}
-
-        {/* Results */}
-        {result && (
-          <div>
-            <h3 style={{ marginBottom: '16px' }}>📊 Detection Results</h3>
-
-            {/* Detections List */}
-            {result.detections.length > 0 ? (
-              <div style={{ marginBottom: '20px' }}>
-                <h4>Found {result.detections.length} damage area{result.detections.length !== 1 ? 's' : ''}:</h4>
-                {result.detections.map((det, i) => (
-                  <div key={i} style={{
-                    padding: '12px',
-                    margin: '8px 0',
-                    border: '1px solid #444',
-                    borderRadius: '4px',
-                    backgroundColor: '#2a2a2a'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                      <div
-                        style={{
-                          width: '12px',
-                          height: '12px',
-                          borderRadius: '50%',
-                          backgroundColor: getSeverityColor(det.severity),
-                          marginRight: '8px'
-                        }}
-                      />
-                      <strong style={{ fontSize: '16px' }}>{formatClassName(det.cls)}</strong>
-                      <span style={{ marginLeft: '12px', color: '#888', fontSize: '14px' }}>
-                        Confidence: {(det.conf * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#bbb' }}>
-                      Severity: {(det.severity * 100).toFixed(1)}% ({det.affected_area_pct.toFixed(1)}% of image)
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: '#10b981', marginBottom: '20px' }}>✅ No damage detected!</p>
-            )}
-
-            {/* Cost Estimate */}
-            {result.cost_estimate && result.detections.length > 0 && (
               <div style={{
-                padding: '16px',
-                backgroundColor: '#2a2a2a',
-                borderRadius: '4px',
-                border: '1px solid #444'
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f8f9fa',
+                borderRadius: 4,
+                padding: 16,
+                minHeight: 400
               }}>
-                <h4 style={{ marginTop: 0, marginBottom: '16px' }}>💰 Cost Estimate</h4>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444' }}>Labor:</td>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444', textAlign: 'right' }}>
-                        ${result.cost_estimate.labor_usd.toFixed(2)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444' }}>Materials:</td>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444', textAlign: 'right' }}>
-                        ${result.cost_estimate.materials_usd.toFixed(2)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444' }}>Disposal:</td>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444', textAlign: 'right' }}>
-                        ${result.cost_estimate.disposal_usd.toFixed(2)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444' }}>Contingency:</td>
-                      <td style={{ padding: '8px 0', borderBottom: '1px solid #444', textAlign: 'right' }}>
-                        ${result.cost_estimate.contingency_usd.toFixed(2)}
-                      </td>
-                    </tr>
-                    <tr style={{ fontWeight: 'bold', fontSize: '16px' }}>
-                      <td style={{ padding: '12px 0 8px 0', borderTop: '2px solid #fff' }}>Total:</td>
-                      <td style={{ padding: '12px 0 8px 0', borderTop: '2px solid #fff', textAlign: 'right' }}>
-                        ${result.cost_estimate.total_usd.toFixed(2)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p style={{ fontSize: '12px', color: '#888', marginTop: '12px', marginBottom: 0 }}>
-                  {result.cost_estimate.assumptions}
-                </p>
+                <div style={{ textAlign: 'center', color: '#6c757d' }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>🏚️</div>
+                  <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+                    Select a Roof Image
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    Choose a PNG or JPG image to detect damage
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

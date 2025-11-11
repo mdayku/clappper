@@ -1521,7 +1521,7 @@ ipcMain.handle('room:listModels', async () => {
         return [];
     }
 });
-ipcMain.handle('room:detect', async (_e, imagePath, modelId) => {
+ipcMain.handle('room:detect', async (_e, imagePath, modelId, confidence) => {
     try {
         // Read image file
         const imageBuffer = await fs.promises.readFile(imagePath);
@@ -1546,9 +1546,13 @@ ipcMain.handle('room:detect', async (_e, imagePath, modelId) => {
         return new Promise((resolve, reject) => {
             const modelIdStr = modelId || 'default';
             const modelIdBytes = Buffer.from(modelIdStr, 'utf-8');
-            // Send: [4 bytes: model ID length][model ID bytes][image buffer]
+            const confidenceValue = confidence !== undefined ? confidence : 0.2;
+            // Send: [4 bytes: model ID length][model ID bytes][4 bytes: confidence][image buffer]
             const modelIdLength = Buffer.allocUnsafe(4);
             modelIdLength.writeUInt32BE(modelIdBytes.length, 0);
+            // Write confidence as 4-byte float (big-endian)
+            const confidenceBuffer = Buffer.allocUnsafe(4);
+            confidenceBuffer.writeFloatBE(confidenceValue, 0);
             // Pass bundled models path as environment variable
             const env = {
                 ...process.env,
@@ -1605,9 +1609,10 @@ ipcMain.handle('room:detect', async (_e, imagePath, modelId) => {
                     reject(new Error(`Failed to parse detection result: ${parseError}`));
                 }
             });
-            // Write binary data: model ID length + model ID + image buffer
+            // Write binary data: model ID length + model ID + confidence + image buffer
             pythonProcess.stdin.write(modelIdLength);
             pythonProcess.stdin.write(modelIdBytes);
+            pythonProcess.stdin.write(confidenceBuffer);
             pythonProcess.stdin.write(imageBuffer);
             pythonProcess.stdin.end();
         });
@@ -1647,7 +1652,7 @@ ipcMain.handle('damage:listModels', async () => {
     }
 });
 // Damage detection handler
-ipcMain.handle('damage:detect', async (_e, imagePath, modelId) => {
+ipcMain.handle('damage:detect', async (_e, imagePath, modelId, confidence) => {
     try {
         // Read image file
         const imageBuffer = await fs.promises.readFile(imagePath);
@@ -1670,10 +1675,14 @@ ipcMain.handle('damage:detect', async (_e, imagePath, modelId) => {
         const bundledModelsPath = getBundledDamageModelsPath();
         return new Promise((resolve, reject) => {
             const modelIdStr = modelId || 'default';
+            const confidenceValue = confidence !== undefined ? confidence : 0.2;
             // Prepare model ID as buffer
             const modelIdBytes = Buffer.from(modelIdStr, 'utf-8');
             const modelIdLength = Buffer.alloc(4);
             modelIdLength.writeUInt32BE(modelIdBytes.length, 0);
+            // Prepare confidence as buffer (4-byte float, big-endian)
+            const confidenceBuffer = Buffer.allocUnsafe(4);
+            confidenceBuffer.writeFloatBE(confidenceValue, 0);
             // Spawn Python process
             const pythonProcess = spawn(pythonPath, [inferenceScriptPath], {
                 cwd,
@@ -1730,9 +1739,10 @@ ipcMain.handle('damage:detect', async (_e, imagePath, modelId) => {
                     reject(new Error(`Failed to parse detection result: ${parseError}`));
                 }
             });
-            // Write binary data: model ID length + model ID + image buffer
+            // Write binary data: model ID length + model ID + confidence + image buffer
             pythonProcess.stdin.write(modelIdLength);
             pythonProcess.stdin.write(modelIdBytes);
+            pythonProcess.stdin.write(confidenceBuffer);
             pythonProcess.stdin.write(imageBuffer);
             pythonProcess.stdin.end();
         });

@@ -51,9 +51,9 @@ contextBridge.exposeInMainWorld('clappper', {
     filterRestoreImage: (badPath, originalPath) => ipcRenderer.invoke('filter:restoreImage', badPath, originalPath),
     filterMoveFolder: (sourcePath, destPath) => ipcRenderer.invoke('filter:moveFolder', sourcePath, destPath),
     // Room Detection
-    detectRooms: (imagePath, modelId) => ipcRenderer.invoke('room:detect', imagePath, modelId),
+    detectRooms: (imagePath, modelId, confidence) => ipcRenderer.invoke('room:detect', imagePath, modelId, confidence),
     listRoomModels: () => ipcRenderer.invoke('room:listModels'),
     // Damage Detection
-    detectDamage: (imagePath, modelId) => ipcRenderer.invoke('damage:detect', imagePath, modelId),
+    detectDamage: (imagePath, modelId, confidence) => ipcRenderer.invoke('damage:detect', imagePath, modelId, confidence),
     listDamageModels: () => ipcRenderer.invoke('damage:listModels')
 });
