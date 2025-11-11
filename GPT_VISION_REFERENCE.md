@@ -39,10 +39,28 @@ if (!apiKey) {
 
 ### 3. Image Encoding
 
+**IMPORTANT:** We send **ANNOTATED images** (with YOLO-drawn bounding boxes) to GPT-4 Vision, not raw images!
+
 ```typescript
-const imageBuffer = await fs.promises.readFile(imagePath)
-const imageBase64 = imageBuffer.toString('base64')
+// Handle base64 (annotated) or file path (raw)
+let imageBase64: string
+if (isBase64) {
+  // Annotated image with visible bounding boxes (PREFERRED)
+  imageBase64 = imagePathOrBase64
+  console.log('[ROOM IDENTIFICATION] Using annotated image with visible bounding boxes')
+} else {
+  // Raw image from file path
+  const imageBuffer = await fs.promises.readFile(imagePathOrBase64)
+  imageBase64 = imageBuffer.toString('base64')
+  console.log('[ROOM IDENTIFICATION] Using raw image from file path')
+}
 ```
+
+**Why annotated images?**
+- GPT can SEE the detection boxes, not just read coordinates
+- Better spatial understanding of room/damage locations
+- More accurate estimates with visual context
+- More confident identifications
 
 ### 4. API Call Structure
 
@@ -108,7 +126,7 @@ const parsedData = JSON.parse(content)
 ### Room Identification Prompt
 
 ```
-You are analyzing a floor plan image with detected room boundaries marked by colored boxes.
+You are analyzing a floor plan image with detected room boundaries. The image shows colored bounding boxes around each detected room - you can see these boxes visually in the image.
 
 Detected Rooms:
 Room 1 (ID: room_abc123): Bounding box at [100, 200, 300, 400]
@@ -138,7 +156,7 @@ Use the actual room IDs provided above. Be specific with room types when confide
 ### Cost Estimation Prompt
 
 ```
-You are analyzing roof damage detected in this image. YOLO object detection has identified X damage areas:
+You are an experienced roofing contractor. Analyze this roof damage image. The image shows damage areas marked with colored bounding boxes - you can see these boxes visually overlaid on the roof.
 
 Detection 1: Class=missing_shingle, Confidence=0.89, BBox=[...]
 Detection 2: Class=crack, Confidence=0.76, BBox=[...]
