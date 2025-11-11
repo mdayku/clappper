@@ -51,14 +51,7 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
   const [zipCode, setZipCode] = useState<string>('')
   const [zipCodeError, setZipCodeError] = useState<string | null>(null)
   const [searchingContractors, setSearchingContractors] = useState(false)
-  const [contractors, setContractors] = useState<Array<{
-    name: string
-    rating: number
-    review_count: number
-    phone: string
-    distance: number
-    url: string
-  }> | null>(null)
+  const [contractorSearchOpened, setContractorSearchOpened] = useState(false)
 
   const loadModels = React.useCallback(async () => {
     setLoadingModels(true)
@@ -245,20 +238,23 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
     
     setSearchingContractors(true)
     setError(null)
-    setContractors(null)
     
     try {
       const result = await window.clappper.findContractors(zipCode, 'roofing')
       
       if (!result.success) {
-        setError(result.error || 'Failed to find contractors')
+        setError(result.error || 'Failed to open browser')
+        setSearchingContractors(false)
         return
       }
       
-      setContractors(result.contractors || [])
+      // Browser opened successfully - show confirmation
+      setContractorSearchOpened(true)
+      setTimeout(() => {
+        setSearchingContractors(false)
+      }, 1000)
     } catch (err) {
-      setError(`Contractor search failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    } finally {
+      setError(`Failed to open browser: ${err instanceof Error ? err.message : 'Unknown error'}`)
       setSearchingContractors(false)
     }
   }
@@ -684,7 +680,7 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                               whiteSpace: 'nowrap'
                             }}
                           >
-                            {searchingContractors ? 'Searching...' : 'Search'}
+                            {searchingContractors ? 'Opening...' : 'Search Google'}
                           </button>
                         </div>
                         {zipCodeError && zipCode.length > 0 && (
@@ -692,55 +688,20 @@ export default function DamageDetector({ isOpen, onClose }: DamageDetectorProps)
                             {zipCodeError}
                           </div>
                         )}
+                        {contractorSearchOpened && (
+                          <div style={{ 
+                            marginTop: 8, 
+                            padding: 8, 
+                            background: '#d4edda', 
+                            border: '1px solid #c3e6cb',
+                            borderRadius: 4,
+                            fontSize: 10,
+                            color: '#155724'
+                          }}>
+                            ✓ Opened Google search in your browser for "roofing contractors near {zipCode}"
+                          </div>
+                        )}
                       </div>
-
-                      {/* Contractor Results */}
-                      {contractors && contractors.length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          {contractors.map((contractor, idx) => (
-                            <div key={idx} style={{
-                              padding: 8,
-                              background: '#f8f9fa',
-                              border: '1px solid #dee2e6',
-                              borderRadius: 4,
-                              marginBottom: 6,
-                              fontSize: 11
-                            }}>
-                              <div style={{ fontWeight: 'bold', marginBottom: 2 }}>{contractor.name}</div>
-                              <div style={{ color: '#6c757d' }}>
-                                ⭐ {contractor.rating} ({contractor.review_count} reviews) • {contractor.distance.toFixed(1)} mi
-                              </div>
-                              {contractor.phone && (
-                                <div style={{ marginTop: 4 }}>
-                                  📞 <a href={`tel:${contractor.phone}`} style={{ color: '#007bff' }}>{contractor.phone}</a>
-                                </div>
-                              )}
-                              <a href={contractor.url} target="_blank" rel="noopener noreferrer" style={{ 
-                                fontSize: 10, 
-                                color: '#007bff',
-                                marginTop: 4,
-                                display: 'inline-block'
-                              }}>
-                                View on Yelp →
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {contractors && contractors.length === 0 && (
-                        <div style={{ 
-                          marginTop: 8, 
-                          padding: 8, 
-                          background: '#fff3cd', 
-                          border: '1px solid #ffc107',
-                          borderRadius: 4,
-                          fontSize: 11,
-                          color: '#856404'
-                        }}>
-                          No roofing contractors found in this area. Try a different zip code.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

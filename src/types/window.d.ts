@@ -152,14 +152,7 @@ declare global {
       // Contractor Search
       findContractors: (zipCode: string, category: string) => Promise<{
         success: boolean
-        contractors?: Array<{
-          name: string
-          rating: number
-          review_count: number
-          phone: string
-          distance: number
-          url: string
-        }>
+        opened_browser?: boolean
         error?: string
       }>
     }

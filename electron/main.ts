@@ -2098,81 +2098,23 @@ ipcMain.handle('settings:getUsageStats', async () => {
   }
 })
 
-// Find contractors using Yelp Fusion API
+// Find contractors by opening Google search
 ipcMain.handle('contractors:find', async (_e: any, zipCode: string, category: string) => {
   try {
-    // Get Yelp API key from config or environment
-    const config = await loadConfig()
-    const apiKey = config.yelp_api_key || process.env.YELP_API_KEY
+    const { shell } = require('electron')
     
-    // For demo purposes, if no Yelp API key, return mock data
-    if (!apiKey) {
-      console.log('[CONTRACTORS] No Yelp API key configured, using mock data for demo')
-      return {
-        success: true,
-        contractors: [
-          {
-            name: 'ABC Roofing & Construction',
-            rating: 4.8,
-            review_count: 127,
-            phone: '+1-555-0123',
-            distance: 2.3,
-            url: 'https://www.yelp.com'
-          },
-          {
-            name: 'Premium Roof Repairs',
-            rating: 4.6,
-            review_count: 89,
-            phone: '+1-555-0456',
-            distance: 3.7,
-            url: 'https://www.yelp.com'
-          },
-          {
-            name: 'Expert Roofing Solutions',
-            rating: 4.5,
-            review_count: 64,
-            phone: '+1-555-0789',
-            distance: 5.1,
-            url: 'https://www.yelp.com'
-          }
-        ]
-      }
-    }
+    // Construct Google search URL
+    const searchQuery = `${category} contractors near ${zipCode}`
+    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`
     
-    console.log(`[CONTRACTORS] Searching for ${category} contractors near ${zipCode}`)
+    console.log(`[CONTRACTORS] Opening Google search: "${searchQuery}"`)
     
-    const response = await fetch(`https://api.yelp.com/v3/businesses/search?location=${zipCode}&term=${category}&categories=roofing&sort_by=rating&limit=5`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json'
-      }
-    })
-    
-    if (!response.ok) {
-      console.error('[CONTRACTORS] Yelp API error:', response.status, response.statusText)
-      return {
-        success: false,
-        error: `Yelp API error: ${response.status} ${response.statusText}`
-      }
-    }
-    
-    const data = await response.json()
-    
-    const contractors = data.businesses?.map((business: any) => ({
-      name: business.name,
-      rating: business.rating || 0,
-      review_count: business.review_count || 0,
-      phone: business.display_phone || business.phone || '',
-      distance: business.distance ? (business.distance * 0.000621371).toFixed(1) : 0, // meters to miles
-      url: business.url || ''
-    })) || []
-    
-    console.log(`[CONTRACTORS] Found ${contractors.length} contractors`)
+    // Open in default browser
+    await shell.openExternal(googleUrl)
     
     return {
       success: true,
-      contractors
+      opened_browser: true
     }
     
   } catch (error) {
