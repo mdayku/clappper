@@ -1,0 +1,711 @@
+# NVIDIA Omniverse + Cosmos Setup Guide (AWS EC2)
+
+**Target:** AWS EC2 GPU instance for AI video generation pipeline  
+**Estimated Cost:** ~$1-2/hour on-demand (g5 instances)  
+**Setup Time:** 60-90 minutes
+
+---
+
+## Why AWS Instead of Local?
+
+Your laptop constraints:
+- ✅ RTX 4050 works, but only 6GB VRAM (Omniverse wants 8GB+)
+- ⚠️ 227GB free is tight (Omniverse ~50GB, Cosmos ~30GB, cache ~20GB)
+- ⚠️ Laptop thermals/battery drain during rendering
+
+AWS advantages:
+- 💪 Better GPU (A10G 24GB VRAM on g5.xlarge)
+- 💾 Elastic storage (500GB+ EBS volumes)
+- 🔥 On-demand scaling (turn off when not rendering)
+- 🌐 Public IP for web app demos
+
+---
+
+## Part 1: Launch AWS EC2 GPU Instance
+
+### Step 1: Choose Instance Type (5 min)
+
+**Recommended:** `g5.xlarge`
+- GPU: NVIDIA A10G (24GB VRAM, Ampere architecture)
+- vCPU: 4
+- RAM: 16GB
+- Cost: ~$1.01/hr on-demand (us-east-1)
+- Perfect for Omniverse + Cosmos
+
+**Alternative:** `g5.2xlarge` if you need more CPU/RAM (~$1.21/hr)
+
+### Step 2: Launch Instance (10 min)
+
+```bash
+# From your local terminal (PowerShell):
+
+# 1. Install AWS CLI if not already:
+winget install Amazon.AWSCLI
+
+# 2. Configure credentials:
+aws configure
+# Enter your AWS Access Key ID
+# Enter your Secret Access Key
+# Region: us-east-1 (or your preferred region)
+
+# 3. Create security group (one-time setup):
+aws ec2 create-security-group \
+  --group-name omniverse-sg \
+  --description "Omniverse + Cosmos GPU instance"
+
+# Note the GroupId (e.g., sg-0123456789abcdef0)
+
+# 4. Allow SSH and HTTP/HTTPS:
+aws ec2 authorize-security-group-ingress \
+  --group-name omniverse-sg \
+  --protocol tcp --port 22 --cidr 0.0.0.0/0
+
+aws ec2 authorize-security-group-ingress \
+  --group-name omniverse-sg \
+  --protocol tcp --port 8000-8100 --cidr 0.0.0.0/0
+
+# 5. Create key pair (if you don't have one):
+aws ec2 create-key-pair \
+  --key-name omniverse-key \
+  --query 'KeyMaterial' \
+  --output text > omniverse-key.pem
+
+# 6. Launch instance:
+aws ec2 run-instances \
+  --image-id ami-0c7217cdde317cfec \
+  --instance-type g5.xlarge \
+  --key-name omniverse-key \
+  --security-groups omniverse-sg \
+  --block-device-mappings DeviceName=/dev/sda1,Ebs={VolumeSize=500,VolumeType=gp3} \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=omniverse-render}]'
+```
+
+**Note the Instance ID** from output (e.g., `i-0123456789abcdef0`)
+
+### Step 3: Get Instance IP & Connect (5 min)
+
+```bash
+# Get public IP:
+aws ec2 describe-instances \
+  --instance-ids i-YOUR_INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+  --output text
+
+# Example output: 3.85.123.45
+
+# SSH in (from PowerShell):
+ssh -i omniverse-key.pem ubuntu@3.85.123.45
+```
+
+---
+
+## Part 2: Install NVIDIA Drivers + CUDA (15 min)
+
+Once connected to your EC2 instance:
+
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install NVIDIA drivers (A10G needs 535+)
+sudo apt install -y ubuntu-drivers-common
+sudo ubuntu-drivers autoinstall
+
+# Reboot to load drivers
+sudo reboot
+
+# (Reconnect after ~60 seconds)
+ssh -i omniverse-key.pem ubuntu@3.85.123.45
+
+# Verify GPU is detected:
+nvidia-smi
+# Should show: A10G with 24GB VRAM
+
+# Install CUDA Toolkit 12.x
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt update
+sudo apt install -y cuda-toolkit-12-3
+
+# Add to PATH
+echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify CUDA
+nvcc --version
+# Should show: CUDA 12.3
+```
+
+---
+
+## Part 3: Install Omniverse (Headless) (20 min)
+
+AWS instances don't have a desktop GUI, so we'll use **headless Kit SDK**.
+
+```bash
+# Install dependencies
+sudo apt install -y \
+  wget curl git \
+  python3.10 python3-pip \
+  libx11-6 libxext6 libxrender1 libxi6 \
+  ffmpeg
+
+# Create working directory
+mkdir -p ~/omniverse && cd ~/omniverse
+
+# Download Omniverse Kit SDK (headless)
+# Note: As of Nov 2024, Kit SDK requires registration. Two options:
+
+# Option A: Use Omniverse Launcher (requires NGC account):
+wget https://install.launcher.omniverse.nvidia.com/installers/omniverse-launcher-linux.AppImage
+chmod +x omniverse-launcher-linux.AppImage
+
+# Install in headless mode (requires X11 forwarding or virtual display):
+sudo apt install -y xvfb
+Xvfb :99 -screen 0 1024x768x24 &
+export DISPLAY=:99
+./omniverse-launcher-linux.AppImage
+
+# Option B: Direct Kit SDK download (if available from NGC):
+# Visit: https://ngc.nvidia.com/catalog/containers/nvidia:omniverse-kit
+# Pull the container instead:
+```
+
+### Easier Path: Use Omniverse Docker Container
+
+```bash
+# Install Docker + NVIDIA Container Toolkit
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker ubuntu
+
+# Install NVIDIA Container Toolkit
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+  sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+sudo apt update
+sudo apt install -y nvidia-container-toolkit
+sudo systemctl restart docker
+
+# Logout and log back in for docker group
+exit
+# (reconnect)
+
+# Test GPU in Docker:
+docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+# Should show your A10G
+
+# Pull Omniverse Kit container (check NGC for latest):
+docker login nvcr.io
+# Username: $oauthtoken
+# Password: <Your NGC API Key from https://ngc.nvidia.com/setup/api-key>
+
+docker pull nvcr.io/nvidia/omniverse-kit:latest
+```
+
+### Create Render Script
+
+```bash
+# Create render script directory
+mkdir -p ~/clappper-render && cd ~/clappper-render
+
+# Create minimal USD scene (test.usda)
+cat > test.usda << 'EOF'
+#usda 1.0
+
+def Xform "World"
+{
+    def Sphere "TestSphere"
+    {
+        double radius = 1.0
+        float3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "MainCamera"
+    {
+        float focalLength = 50
+        float3 xformOp:translate = (0, 0, 5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+EOF
+
+# Create headless render script (render_kit.py)
+cat > render_kit.py << 'EOF'
+import carb
+import omni.kit.app
+from omni.kit.viewport.utility import get_active_viewport
+import omni.replicator.core as rep
+
+def render_scene(usd_path: str, output_path: str, frames: int = 90):
+    """Headless render with Replicator"""
+    
+    # Open stage
+    omni.usd.get_context().open_stage(usd_path)
+    
+    # Setup camera and render product
+    camera = rep.create.camera(position=(0, 0, 5))
+    rp = rep.create.render_product(camera, resolution=(1920, 1080))
+    
+    # Basic RGB writer
+    writer = rep.WriterRegistry.get("BasicWriter")
+    writer.initialize(output_dir=output_path, rgb=True)
+    writer.attach([rp])
+    
+    # Render frames
+    rep.orchestrator.run(num_frames=frames)
+    
+    print(f"Rendered {frames} frames to {output_path}")
+
+if __name__ == "__main__":
+    import sys
+    render_scene(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+EOF
+
+# Run render via Docker:
+docker run --rm --gpus all \
+  -v $(pwd):/workspace \
+  nvcr.io/nvidia/omniverse-kit:latest \
+  /workspace/render_kit.py /workspace/test.usda /workspace/output 90
+```
+
+**✅ Checkpoint:** You should now have rendered frames in `~/clappper-render/output/`
+
+---
+
+## Part 4: Install Cosmos (25 min)
+
+### Option A: Hosted API (Fastest)
+
+```bash
+# Install Python dependencies
+pip3 install requests python-dotenv
+
+# Set NGC API key
+echo "NGC_API_KEY=nvapi-YOUR_KEY_HERE" > ~/.env
+
+# Test Cosmos API availability
+cat > test_cosmos_api.py << 'EOF'
+import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+NGC_API_KEY = os.getenv("NGC_API_KEY")
+
+# List available NVCF functions
+url = "https://api.nvcf.nvidia.com/v2/nvcf/functions"
+headers = {
+    "Authorization": f"Bearer {NGC_API_KEY}",
+    "Content-Type": "application/json"
+}
+
+response = requests.get(url, headers=headers)
+print("Status:", response.status_code)
+print("Available functions:")
+for func in response.json().get("functions", []):
+    if "cosmos" in func.get("name", "").lower():
+        print(f"  - {func['name']}: {func.get('id')}")
+EOF
+
+python3 test_cosmos_api.py
+```
+
+If Cosmos models appear, you're good to go with hosted API.
+
+### Option B: Self-Hosted NIM (if Cosmos available)
+
+```bash
+# Pull Cosmos NIM container (check NGC catalog for actual name)
+docker pull nvcr.io/nvidia/cosmos-transfer:latest
+
+# Run locally:
+docker run -d --gpus all \
+  --name cosmos-nim \
+  -p 8000:8000 \
+  -e NGC_API_KEY=$NGC_API_KEY \
+  -v $(pwd)/cosmos-cache:/cache \
+  nvcr.io/nvidia/cosmos-transfer:latest
+
+# Test local endpoint:
+curl -X POST http://localhost:8000/v1/transfer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "controls": {"segmentation": "base64_encoded_image"},
+    "duration": 3,
+    "fps": 24
+  }'
+```
+
+### Option C: Open-Source Weights (if NIMs unavailable)
+
+```bash
+# Clone Cosmos Transfer repo
+cd ~/
+git clone https://github.com/nvidia-cosmos/cosmos-transfer1.git
+cd cosmos-transfer1
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Download model weights
+# (Check repo README for weight links - typically from Hugging Face)
+huggingface-cli login  # If needed
+huggingface-cli download nvidia/cosmos-transfer1-v1 --local-dir ./weights
+
+# Test inference
+python inference.py \
+  --seg-path example_seg.png \
+  --depth-path example_depth.exr \
+  --output output.mp4 \
+  --duration 3
+```
+
+**✅ Checkpoint:** Cosmos should now be accessible (API, NIM, or local)
+
+---
+
+## Part 5: Wire into Clappper Pipeline (15 min)
+
+### Setup Remote Development
+
+From your **local Windows machine**:
+
+```powershell
+# Install VS Code Remote SSH extension (if not already)
+code --install-extension ms-vscode-remote.remote-ssh
+
+# Add your EC2 instance to SSH config:
+notepad $HOME\.ssh\config
+
+# Add these lines:
+Host omniverse-aws
+    HostName 3.85.123.45  # Your EC2 IP
+    User ubuntu
+    IdentityFile C:\path\to\omniverse-key.pem
+```
+
+Now in VS Code:
+- `Ctrl+Shift+P` → "Remote-SSH: Connect to Host"
+- Select `omniverse-aws`
+- Open folder: `/home/ubuntu/clappper-render`
+
+### Create Provider Wrappers
+
+On the EC2 instance, create:
+
+**`~/clappper-render/omniverse_provider.sh`:**
+
+```bash
+#!/bin/bash
+# Usage: ./omniverse_provider.sh scene.usda output_dir frames
+
+USD_PATH=$1
+OUTPUT_DIR=$2
+FRAMES=${3:-90}
+
+docker run --rm --gpus all \
+  -v $(pwd):/workspace \
+  nvcr.io/nvidia/omniverse-kit:latest \
+  python /workspace/render_kit.py \
+  /workspace/$USD_PATH \
+  /workspace/$OUTPUT_DIR \
+  $FRAMES
+
+echo "Omniverse render complete: $OUTPUT_DIR"
+```
+
+**`~/clappper-render/cosmos_provider.py`:**
+
+```python
+#!/usr/bin/env python3
+import sys
+import json
+import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def cosmos_transfer(controls_json: str, output_path: str):
+    """Call Cosmos Transfer API or local NIM"""
+    
+    NGC_API_KEY = os.getenv("NGC_API_KEY")
+    COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT", "http://localhost:8000/v1/transfer")
+    
+    controls = json.loads(controls_json)
+    
+    payload = {
+        "controls": controls,
+        "duration": 3,
+        "fps": 24
+    }
+    
+    # If using hosted API:
+    if "nvcf.nvidia.com" in COSMOS_ENDPOINT:
+        headers = {"Authorization": f"Bearer {NGC_API_KEY}"}
+    else:
+        headers = {}
+    
+    response = requests.post(COSMOS_ENDPOINT, json=payload, headers=headers)
+    result = response.json()
+    
+    # Download video (implementation depends on API response structure)
+    video_url = result.get("output_url") or result.get("video")
+    
+    if video_url:
+        video_data = requests.get(video_url).content
+        with open(output_path, 'wb') as f:
+            f.write(video_data)
+        print(f"Cosmos output saved: {output_path}")
+    else:
+        print("Error: No video in response", result)
+
+if __name__ == "__main__":
+    cosmos_transfer(sys.argv[1], sys.argv[2])
+```
+
+Make executable:
+
+```bash
+chmod +x ~/clappper-render/omniverse_provider.sh
+chmod +x ~/clappper-render/cosmos_provider.py
+```
+
+### Test End-to-End
+
+```bash
+cd ~/clappper-render
+
+# 1. Render with Omniverse → get depth/seg
+./omniverse_provider.sh test.usda output_omni 90
+
+# 2. Feed to Cosmos (if available)
+python3 cosmos_provider.py \
+  '{"segmentation":"output_omni/seg_0001.png","depth":"output_omni/depth_0001.exr"}' \
+  cosmos_output.mp4
+
+# 3. Verify outputs
+ls -lh output_omni/ cosmos_output.mp4
+```
+
+---
+
+## Part 6: Connect to Web App (Your Local Machine)
+
+### Option A: API Wrapper on EC2
+
+On EC2, create a simple Flask API:
+
+```bash
+pip3 install flask flask-cors
+
+cat > render_api.py << 'EOF'
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+import subprocess
+import uuid
+import os
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/render/omniverse', methods=['POST'])
+def render_omniverse():
+    data = request.json
+    job_id = str(uuid.uuid4())
+    output_dir = f"jobs/{job_id}"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save USD scene from request
+    usd_path = f"{output_dir}/scene.usda"
+    with open(usd_path, 'w') as f:
+        f.write(data['usd_content'])
+    
+    # Render
+    subprocess.run([
+        './omniverse_provider.sh',
+        usd_path,
+        output_dir,
+        str(data.get('frames', 90))
+    ])
+    
+    return jsonify({"job_id": job_id, "output_dir": output_dir})
+
+@app.route('/render/cosmos', methods=['POST'])
+def render_cosmos():
+    data = request.json
+    job_id = str(uuid.uuid4())
+    output_path = f"jobs/{job_id}/cosmos.mp4"
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    subprocess.run([
+        'python3', 'cosmos_provider.py',
+        data['controls'],
+        output_path
+    ])
+    
+    return send_file(output_path, mimetype='video/mp4')
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+EOF
+
+# Run API server (in tmux/screen for persistence):
+tmux new -s render-api
+python3 render_api.py
+# Detach: Ctrl+B, then D
+```
+
+### Option B: Direct SSH from Next.js API Routes
+
+In your Next.js API route, call EC2 directly:
+
+```typescript
+// /api/render/omniverse
+import { spawn } from 'child_process';
+
+export async function POST(req: Request) {
+  const { sceneRecipe } = await req.json();
+  
+  return new Promise((resolve, reject) => {
+    const ssh = spawn('ssh', [
+      '-i', process.env.AWS_KEY_PATH,
+      `ubuntu@${process.env.EC2_IP}`,
+      `cd ~/clappper-render && ./omniverse_provider.sh ${sceneRecipe.usd} output ${sceneRecipe.frames}`
+    ]);
+    
+    ssh.on('close', (code) => {
+      if (code === 0) {
+        // SCP the results back or upload to S3
+        resolve({ success: true, outputPath: 'output' });
+      } else {
+        reject(new Error(`Render failed: ${code}`));
+      }
+    });
+  });
+}
+```
+
+---
+
+## Cost Management & Shutdown
+
+### Stop Instance When Not Rendering
+
+```bash
+# From local machine:
+aws ec2 stop-instances --instance-ids i-YOUR_INSTANCE_ID
+
+# Start when needed:
+aws ec2 start-instances --instance-ids i-YOUR_INSTANCE_ID
+
+# Note: Public IP changes on restart; use Elastic IP if you need stable address
+```
+
+### Monthly Cost Estimates
+
+**On-Demand g5.xlarge (~$1/hr):**
+- 8 hours/day dev work: ~$240/month
+- 2 hours/day rendering: ~$60/month
+
+**Savings:**
+- Use **Spot Instances** (60-70% cheaper) for batch rendering
+- Stop instance overnight (save ~$360/month)
+- Use **Reserved Instances** if you know you'll use it >1 year
+
+### Alternative: AWS SageMaker Studio Lab (Free Tier)
+
+If budget is tight:
+- 15GB storage, 16GB RAM, Tesla T4 GPU
+- Free tier available for approved projects
+- Limited to 4-hour sessions
+
+---
+
+## Verification Checklist
+
+### Omniverse ✅
+- [ ] EC2 g5.xlarge launched & accessible
+- [ ] NVIDIA drivers installed (`nvidia-smi` works)
+- [ ] Docker + NVIDIA runtime working
+- [ ] Omniverse Kit container renders test scene
+- [ ] Can export depth/seg via Replicator
+
+### Cosmos ✅
+- [ ] NGC API key obtained
+- [ ] Cosmos API accessible OR NIM running OR open weights inference works
+- [ ] Test request completes (even if limited by quota)
+
+### Integration ✅
+- [ ] SSH/SCP from local machine works
+- [ ] Can trigger remote render from web app
+- [ ] Rendered outputs transfer back or upload to S3
+
+---
+
+## Troubleshooting
+
+### "Docker: Error response from daemon: could not select device driver"
+```bash
+sudo systemctl restart docker
+docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+```
+
+### "Omniverse Kit container fails with 'No display'"
+- Use Xvfb wrapper or Kit headless mode (already in scripts above)
+
+### "Cosmos API returns 403"
+- Check NGC key scope: needs "NVCF Invoke Function" permission
+- Some models are in early access; join waitlist at developer.nvidia.com
+
+### SSH Connection Drops
+```bash
+# Add to ~/.ssh/config on local machine:
+Host omniverse-aws
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+```
+
+---
+
+## Next Steps
+
+1. **Create test renders** (Omniverse → Cosmos pipeline)
+2. **Benchmark costs** (track actual $/minute of video)
+3. **Automate startup/shutdown** (AWS Lambda or cron to stop idle instances)
+4. **Add to web app** (remote provider integration)
+5. **Document in project README** (IP, credentials, commands)
+
+**Realistic Setup Time:**
+- EC2 + Drivers: 30 min
+- Omniverse Docker: 20 min
+- Cosmos setup: 30 min (if API) / 2 hours (if building)
+- Integration: 20 min
+
+**Total: 90-150 minutes**
+
+---
+
+## Cost-Saving Pro Tips
+
+1. **Use spot instances** for batch rendering (save 60-70%)
+2. **Snapshot your configured instance** → launch from AMI next time (skip setup)
+3. **S3 for storage** → cheaper than EBS for rendered outputs ($0.023/GB vs $0.10/GB)
+4. **Auto-shutdown script:**
+   ```bash
+   # Add to crontab: shutdown if idle >30 min
+   */30 * * * * [ $(uptime | awk '{print $10}' | cut -d, -f1) -lt 0.1 ] && sudo shutdown -h now
+   ```
+
+Good luck! Let me know when you hit your first successful render.
+
