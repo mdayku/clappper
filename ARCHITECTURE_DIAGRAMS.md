@@ -16,12 +16,12 @@ graph TB
     end
     
     subgraph "Backend (Next.js API Routes)"
-        E[/api/preflight]
-        F[/api/generate]
-        G[/api/webhook/*]
-        H[/api/status/:id]
-        I[/api/compose]
-        J[/api/metrics]
+        E["API: /preflight"]
+        F["API: /generate"]
+        G["API: /webhook/*"]
+        H["API: /status/:id"]
+        I["API: /compose"]
+        J["API: /metrics"]
     end
     
     subgraph "Job Queue"
