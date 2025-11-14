@@ -6,6 +6,83 @@
 
 ---
 
+## Top Priorities (Working Checklist)
+
+These are the **live, high-priority tasks** for the Omniverse + Cosmos work. Treat this section as the day-to-day checklist.
+
+**Completed so far:** Phase 0 (Pre-Flight), Phase 1 (EC2 host + SSH), Phase 2 (GPU drivers, CUDA, Docker + NVIDIA toolkit).
+
+**Parallel track (UI):** A separate Windows `g5.xlarge` instance with GPU drivers and Omniverse Launcher will be used as an **interactive authoring workstation** (RDP + GUI), while the Ubuntu instance remains the **headless render + Cosmos pipeline** engine.
+
+### Current Stage – Phase 3: Omniverse (Headless via Container)
+
+- [x] **3.1 Base packages & workspace**
+  - [x] Install dependencies: `wget`, `curl`, `git`, `python3`, `pip`, `ffmpeg`, X11 libs.
+  - [x] Create working directories: `~/omniverse` and `~/clappper-render`.
+- [ ] **3.2 Omniverse Kit container**
+  - [ ] Create or sign in to an NGC account at `ngc.nvidia.com`.
+  - [ ] Generate an NGC API key (`nvapi-...`) from **Setup → API Keys** in the NGC web UI.
+  - [ ] Log in to `nvcr.io` with:
+    - Username: `$oauthtoken` (literally this string)
+    - Password: your NGC API key
+  - [ ] Pull Omniverse Kit container: `nvcr.io/nvidia/omniverse-kit:latest`.
+    - _Note: If you see **“error from registry: Access Denied”**, your NGC account is not entitled to this image and you must request access in the NGC catalog or use the non-container Omniverse setup path._
+- [ ] **3.3 Test scene & render script**
+  - [ ] Create `test.usda` and `render_kit.py` in `~/clappper-render`.
+- [ ] **3.4 Headless render validation**
+  - [ ] Run test render via Docker as in this guide.
+  - [ ] Confirm output frames show up in `~/clappper-render/output/`.
+
+### Next Stage – Phase 4: Cosmos
+
+- [ ] **4.1 Local Python environment for Cosmos**
+  - [ ] Ensure `python3` and `pip` are installed and working on EC2.
+- [ ] **4.2 Choose Cosmos path**
+  - [ ] Decide between hosted API, NIM container, or open-weights repo.
+  - [ ] Implement one path end-to-end and produce a test video file.
+- [ ] **4.3 Validate Cosmos output**
+  - [ ] Confirm a minimal request succeeds and outputs a playable video.
+
+### Phase Overview (0–7) – Reference Plan
+
+Use this as the project PRD/task map; the rest of the document provides detailed commands.
+
+1. **Phase 0 – Pre-Flight & Decisions**
+   - AWS prerequisites: account, IAM user for CLI, region `us-east-1`.
+   - Local tooling: AWS CLI, SSH, VS Code Remote SSH.
+   - Choices: Cosmos path (hosted API vs NIM vs open weights) and app integration (Flask API vs direct SSH).
+2. **Phase 1 – EC2 GPU Host (AWS)**
+   - Security group (`clappper-omniverse-sg`).
+   - Key pair (`clappper-omniverse-key2`) and `.ssh` setup.
+   - Launch `g5.xlarge` with 500GB `gp3`, tag `omniverse-render`, confirm SSH access.
+3. **Phase 2 – GPU Stack (Drivers, CUDA, Docker)**
+   - NVIDIA driver via `ubuntu-drivers autoinstall`.
+   - CUDA 12.x install and verification.
+   - Docker + NVIDIA Container Toolkit and GPU test container.
+4. **Phase 3 – Omniverse (Headless via Container)**
+   - Base packages + workspace directories.
+   - Omniverse Kit container pulled from NGC.
+   - Minimal USD scene + headless render script.
+   - Successful test render to disk.
+5. **Phase 4 – Cosmos**
+   - Decide path (hosted API, NIM, or open weights).
+   - Implement one working path end-to-end and produce a test video.
+6. **Phase 5 – Clappper Integration Providers**
+   - `omniverse_provider.sh` wrapper for headless Omniverse.
+   - `cosmos_provider.py` wrapper for Cosmos.
+   - End-to-end Omniverse → Cosmos pipeline producing a video.
+7. **Phase 6 – HTTP / Web App Integration**
+   - Remote dev via VS Code SSH.
+   - Flask API on EC2 or direct SSH from Next.js API routes.
+   - Web app triggers renders and retrieves outputs.
+   - Configure auto-shutdown CloudWatch alarms/Lambda to stop idle EC2 instances (Ubuntu headless + Windows Omniverse UI) after ~30 minutes of low CPU.
+8. **Phase 7 – Cost Management & QoL**
+   - Refine auto-shutdown behavior and thresholds if needed.
+   - Start/stop helper scripts, optional Elastic IP.
+   - Final README / ops documentation.
+
+---
+
 ## Why AWS Instead of Local?
 
 Your laptop constraints:
@@ -273,7 +350,80 @@ docker run --rm --gpus all \
   /workspace/render_kit.py /workspace/test.usda /workspace/output 90
 ```
 
-**✅ Checkpoint:** You should now have rendered frames in `~/clappper-render/output/`
+**✅ Checkpoint (target):** Once Kit headless rendering is healthy, you should see rendered frames in `~/clappper-render/output/`. As of Nov 2025 in this project, Kit container startup is **partially blocked** by extension registry issues (`omni.pip.compute` and offline index). Headless Omniverse remains a stretch goal while Cosmos + pipeline integration proceeds.
+
+---
+
+## Part 3b: Omniverse UI on Windows EC2 (Optional but Recommended)
+
+For interactive scene authoring, use a separate **Windows g5.xlarge** instance with RDP and Omniverse Launcher. The Ubuntu instance remains the headless render/Cosmos engine.
+
+### Step 1: Launch Windows g5.xlarge via AWS CLI (from your laptop)
+
+```powershell
+# 1. Open RDP port on existing security group (dev-friendly; tighten CIDR later)
+aws ec2 authorize-security-group-ingress `
+  --group-name clappper-omniverse-sg `
+  --protocol tcp --port 3389 --cidr 0.0.0.0/0
+
+# 2. Get latest Windows Server 2022 AMI in us-east-1
+$WinAmi = aws ssm get-parameters `
+  --names /aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base `
+  --query 'Parameters[0].Value' `
+  --output text
+
+# 3. Launch Windows g5.xlarge
+$WinInstance = aws ec2 run-instances `
+  --image-id $WinAmi `
+  --instance-type g5.xlarge `
+  --key-name clappper-omniverse-key2 `
+  --security-groups clappper-omniverse-sg `
+  --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=200,VolumeType=gp3}" `
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=omniverse-win}]'
+
+$WinInstanceId = ($WinInstance | ConvertFrom-Json).Instances[0].InstanceId
+
+# 4. Get public IP
+$WinPublicIp = aws ec2 describe-instances `
+  --instance-ids $WinInstanceId `
+  --query 'Reservations[0].Instances[0].PublicIpAddress' `
+  --output text
+
+# 5. Decrypt Windows Administrator password
+aws ec2 get-password-data `
+  --instance-id $WinInstanceId `
+  --priv-launch-key "$HOME\.ssh\clappper-omniverse-key2.pem" `
+  --query 'PasswordData' `
+  --output text
+```
+
+### Step 2: RDP into Windows and Install GPU Driver
+
+1. Open **Remote Desktop Connection** on your laptop and connect to `$WinPublicIp` as `Administrator` using the decrypted password.
+2. In the Windows session, open a browser and go to `https://www.nvidia.com/Download/index.aspx`.
+3. Download and install the latest **NVIDIA Data Center driver** for **NVIDIA A10** on **Windows Server 2022** (Express install).
+4. Reboot the instance, RDP back in, open PowerShell, and verify:
+   ```powershell
+   nvidia-smi
+   ```
+   You should see the A10G listed.
+
+### Step 3: Install Omniverse Launcher for Windows
+
+1. In the Windows RDP session, open Edge and visit `https://ngc.nvidia.com` (sign in with the entitled NVIDIA account).
+2. Download **NVIDIA Omniverse Launcher for Windows** from the Omniverse/Downloads section.
+3. Run the Launcher installer and sign in.
+4. From Launcher, install apps such as **Omniverse Composer** and **Omniverse Code** for interactive scene authoring.
+
+### Suggested Workflow
+
+- Use the **Windows Omniverse instance** for:
+  - Building and editing scenes with full GUI.
+  - Exporting USD scenes to a shared location (S3 or SCP to the Ubuntu instance).
+- Use the **Ubuntu headless instance** for:
+  - Automated Kit renders (once headless issues are resolved).
+  - Generating control signals (depth/seg) for Cosmos.
+  - Serving API endpoints to the Clappper web app.
 
 ---
 
@@ -611,6 +761,72 @@ aws ec2 start-instances --instance-ids i-YOUR_INSTANCE_ID
 
 # Note: Public IP changes on restart; use Elastic IP if you need stable address
 ```
+
+### Auto-Shutdown via CloudWatch + Lambda (Idle ~30 Minutes)
+
+For both the Ubuntu headless instance and the Windows Omniverse UI instance, prefer AWS-native auto-stop instead of in-VM cron scripts.
+
+High-level design:
+- A **CloudWatch alarm** watches `CPUUtilization` on each instance.
+- If average CPU < 1% for 30 minutes, the alarm triggers a **Lambda function**.
+- Lambda calls `ec2:StopInstances` on the idle instance.
+
+#### Step 1: Create IAM Role for Lambda
+
+1. In the AWS console → **IAM → Roles → Create role**.
+2. Trusted entity: **AWS service**, use case **Lambda**.
+3. Attach the managed policy **`AmazonEC2FullAccess`** (or a tighter custom policy allowing `DescribeInstances` + `StopInstances`).
+4. Name the role `clappper-ec2-autostop-role`.
+
+#### Step 2: Create the Auto-Stop Lambda Function
+
+Use Python 3.x runtime and the IAM role above.
+
+Handler code (pseudo-code; store instance IDs as environment variables):
+
+```python
+import os
+import boto3
+
+ec2 = boto3.client("ec2")
+
+def lambda_handler(event, context):
+    instance_ids = []
+
+    # One Lambda can stop multiple instances; use env vars for clarity.
+    ubuntu_id = os.getenv("UBUNTU_INSTANCE_ID")
+    win_id = os.getenv("WIN_INSTANCE_ID")
+
+    if ubuntu_id:
+        instance_ids.append(ubuntu_id)
+    if win_id:
+        instance_ids.append(win_id)
+
+    if not instance_ids:
+        return {"status": "no instances configured"}
+
+    ec2.stop_instances(InstanceIds=instance_ids)
+    return {"status": "stopped", "instances": instance_ids}
+```
+
+Set environment variables:
+- `UBUNTU_INSTANCE_ID = i-...` (your headless EC2 ID)
+- `WIN_INSTANCE_ID = i-...` (your Windows UI EC2 ID)
+
+#### Step 3: Create CloudWatch Alarms for Each Instance
+
+For both instances:
+
+1. Go to **CloudWatch → Alarms → All alarms → Create alarm**.
+2. Select metric: **EC2 → Per-Instance Metrics → CPUUtilization** for the instance.
+3. Period: **5 minutes**, **Statistic: Average**.
+4. Threshold: **`CPUUtilization < 1`** for **6 consecutive periods** (≈30 minutes).
+5. Alarm action: **“Select an existing Lambda function”** → choose the auto-stop Lambda.
+6. Name alarms:
+   - `clappper-ubuntu-autostop`
+   - `clappper-windows-autostop`
+
+Once both alarms are `OK` → `ALARM` after 30 min of low CPU, Lambda will automatically stop the instances.
 
 ### Monthly Cost Estimates
 

@@ -1,0 +1,84 @@
+Clappper Omniverse EC2 – Quick Access Guide (PowerShell)
+========================================================
+
+This is a minimal, copy-pasteable guide for getting back into the Omniverse/Cosmos EC2 box from **PowerShell**.
+
+Assumptions:
+- You created the key pair named `clappper-omniverse-key2`.
+- The private key lives at: `C:\Users\marcu\.ssh\clappper-omniverse-key2.pem`.
+- The EC2 instance is in `us-east-1` and tagged `Name=omniverse-render`.
+
+---
+
+1. Get the Instance ID for the Omniverse machine
+-----------------------------------------------
+
+```powershell
+# List instances named "omniverse-render" in us-east-1
+aws ec2 describe-instances `
+  --filters "Name=tag:Name,Values=omniverse-render" `
+  --query "Reservations[0].Instances[0].InstanceId" `
+  --output text
+```
+
+Copy the output (e.g. `i-0b8a3f2ad32990a02`) and set it in a variable:
+
+```powershell
+$InstanceId = "i-0b8a3f2ad32990a02"  # replace with your real value
+```
+
+---
+
+2. Make sure the instance is running (start if needed)
+-----------------------------------------------------
+
+```powershell
+# Check current state
+aws ec2 describe-instances `
+  --instance-ids $InstanceId `
+  --query "Reservations[0].Instances[0].State.Name" `
+  --output text
+
+# If state is 'stopped', start it:
+aws ec2 start-instances --instance-ids $InstanceId
+```
+
+Wait until the state is `running` (can re-run the describe command to check).
+
+---
+
+3. Get the current public IP
+----------------------------
+
+```powershell
+$PublicIp = aws ec2 describe-instances `
+  --instance-ids $InstanceId `
+  --query "Reservations[0].Instances[0].PublicIpAddress" `
+  --output text
+
+$PublicIp
+```
+
+Note: If you stop/start the instance, this IP will usually change unless you attach an Elastic IP.
+
+---
+
+4. SSH into the instance
+------------------------
+
+```powershell
+ssh -i "$HOME\.ssh\clappper-omniverse-key2.pem" ubuntu@$PublicIp
+```
+
+If you see a warning about authenticity or host key, type `yes` to continue.
+
+---
+
+5. Optional: Quickly stop the instance when done
+-----------------------------------------------
+
+```powershell
+aws ec2 stop-instances --instance-ids $InstanceId
+```
+
+Stopping the instance saves cost but preserves the disk. Starting it again later will give you a new public IP.
