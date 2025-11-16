@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('clappper', {
   openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
   openImageFiles: () => ipcRenderer.invoke('dialog:openImageFiles'),
+  detectImageFormats: (filePaths: string[]) => ipcRenderer.invoke('images:detectFormats', filePaths),
+  convertImagesToPng: (filePaths: string[]) => ipcRenderer.invoke('images:convertToPng', filePaths),
   savePath: (defaultName: string) => ipcRenderer.invoke('dialog:savePath', defaultName),
   ffprobe: (filePath: string) => ipcRenderer.invoke('ffprobe:metadata', filePath),
   generateThumbnail: (payload: { input: string; timestamp: number; clipId: string }) => ipcRenderer.invoke('thumbnail:generate', payload),
@@ -47,7 +49,9 @@ contextBridge.exposeInMainWorld('clappper', {
   getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
   saveRecording: (filePath: string, base64Data: string) =>
     ipcRenderer.invoke('screen:save-recording', { filePath, base64Data }),
+  getDownloadsPath: () => ipcRenderer.invoke('system:getDownloadsPath'),
   enhanceVideo: (payload: { input: string; output: string }) => ipcRenderer.invoke('ai:enhance', payload),
+  upscaleRunway: (payload: { input: string; output: string }) => ipcRenderer.invoke('ai:upscale-runway', payload),
   enhanceCancel: () => ipcRenderer.invoke('ai:enhance:cancel'),
   detectGPU: () => ipcRenderer.invoke('ai:detect-gpu'),
   onEnhanceProgress: (cb: (progress: any) => void) => {

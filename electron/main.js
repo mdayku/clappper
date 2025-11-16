@@ -9,6 +9,8 @@ const ffmpeg = require('fluent-ffmpeg');
 // Note: These are TypeScript files that will be compiled to JS
 const replicate_client_1 = require("./replicate-client");
 const video_asset_prompts_1 = require("./video-asset-prompts");
+const logo_animation_prompts_1 = require("./logo-animation-prompts");
+const sharp = require('sharp');
 // Suppress Chromium's verbose WGC (Windows Graphics Capture) errors
 // These are harmless warnings from the screen capture API
 app.commandLine.appendSwitch('disable-logging');
@@ -451,13 +453,81 @@ ipcMain.handle('dialog:openFiles', async () => {
 });
 ipcMain.handle('dialog:openImageFiles', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-        properties: ['openFile', 'multiSelections'],
+        properties: ['openFile'], // Single file only - AI models use 1 image per prompt
         filters: [
-            { name: 'Images', extensions: ['png', 'jpg', 'jpeg'] },
+            { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'avif', 'svg', 'gif', 'tiff', 'bmp'] },
             { name: 'All Files', extensions: ['*'] }
         ]
     });
     return canceled ? [] : filePaths;
+});
+// Image format detection and conversion
+ipcMain.handle('images:detectFormats', async (_event, filePaths) => {
+    const SUPPORTED_FORMATS = ['.png', '.jpg', '.jpeg'];
+    const CONVERTIBLE_FORMATS = ['.webp', '.avif', '.svg', '.gif', '.tiff', '.bmp'];
+    const results = filePaths.map(filePath => {
+        const ext = path.extname(filePath).toLowerCase();
+        const needsConversion = CONVERTIBLE_FORMATS.includes(ext);
+        const isSupported = SUPPORTED_FORMATS.includes(ext);
+        return {
+            path: filePath,
+            extension: ext,
+            needsConversion,
+            isSupported,
+            fileName: path.basename(filePath)
+        };
+    });
+    return {
+        files: results,
+        needsConversion: results.some(r => r.needsConversion),
+        unsupportedCount: results.filter(r => r.needsConversion).length
+    };
+});
+ipcMain.handle('images:convertToPng', async (_event, filePaths) => {
+    const results = [];
+    for (const filePath of filePaths) {
+        try {
+            const ext = path.extname(filePath).toLowerCase();
+            const baseName = path.basename(filePath, ext);
+            const dirName = path.dirname(filePath);
+            // Generate output path
+            const outputPath = path.join(dirName, `${baseName}_converted.png`);
+            console.log(`[IMAGE CONVERT] Converting: ${path.basename(filePath)}`);
+            let sharpInstance = sharp(filePath);
+            // Special handling for SVG - rasterize at high resolution
+            if (ext === '.svg') {
+                sharpInstance = sharpInstance.resize(2000, null, {
+                    fit: 'inside',
+                    withoutEnlargement: false
+                });
+                console.log(`[IMAGE CONVERT]   → SVG detected: Rasterizing at 2000px width`);
+            }
+            // Convert to PNG with high quality
+            await sharpInstance
+                .png({
+                quality: 100,
+                compressionLevel: 6,
+                palette: false
+            })
+                .toFile(outputPath);
+            const metadata = await sharp(outputPath).metadata();
+            console.log(`[IMAGE CONVERT]   ✓ Saved: ${path.basename(outputPath)} (${metadata.width}×${metadata.height})`);
+            results.push({
+                success: true,
+                inputPath: filePath,
+                outputPath
+            });
+        }
+        catch (error) {
+            console.error(`[IMAGE CONVERT]   ✗ Error converting ${path.basename(filePath)}:`, error.message);
+            results.push({
+                success: false,
+                inputPath: filePath,
+                error: error.message
+            });
+        }
+    }
+    return results;
 });
 ipcMain.handle('dialog:savePath', async (_e, defaultName) => {
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
@@ -1104,6 +1174,60 @@ ipcMain.handle('ai:enhance', async (_e, args) => {
             console.error('Cleanup error:', cleanupErr);
         }
         throw err;
+    }
+});
+// Get downloads path
+ipcMain.handle('system:getDownloadsPath', async () => {
+    return app.getPath('downloads');
+});
+// Runway upscale handler (cloud-based 4K upscaling)
+ipcMain.handle('ai:upscale-runway', async (_e, args) => {
+    const { input, output } = args;
+    // Check for Replicate API key
+    const config = await loadConfig();
+    const replicateApiKey = config.api_keys?.replicate;
+    if (!replicateApiKey) {
+        throw new Error('Replicate API key not configured. Please set your API key in Settings → API Keys.');
+    }
+    const client = new replicate_client_1.ReplicateClient({ apiToken: replicateApiKey });
+    const outputDir = path.dirname(output);
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
+    console.log('=== Runway 4K Upscaling ===');
+    console.log('Input:', input);
+    console.log('Output:', output);
+    try {
+        const upscaledPath = await client.upscaleVideo(input, outputDir, (status) => {
+            console.log(`[RUNWAY UPSCALE] ${status}`);
+            if (win) {
+                win.webContents.send('ai:enhance:progress', {
+                    stage: 'process',
+                    frame: 0,
+                    totalFrames: 100,
+                    percent: status.includes('Complete') ? 100 : 50,
+                    eta: status,
+                    fps: '0'
+                });
+            }
+        });
+        // Rename to desired output path
+        if (upscaledPath !== output) {
+            await fs.promises.rename(upscaledPath, output);
+        }
+        console.log('=== Runway Upscaling Complete ===');
+        console.log('Output file:', output);
+        return {
+            ok: true,
+            outPath: output,
+            outputWidth: 0, // Will be detected by frontend
+            outputHeight: 0,
+            scale: 4
+        };
+    }
+    catch (err) {
+        console.error('[RUNWAY UPSCALE] Error:', err);
+        throw new Error(`Runway upscaling failed: ${err.message}`);
     }
 });
 // Helper to build FFmpeg expression for keyframe animation
@@ -1908,12 +2032,12 @@ const saveVideoAssetsConfig = async (jobs) => {
 };
 // Create a new video asset job with real API integration
 ipcMain.handle('videoAssets:createJob', async (_e, payload) => {
-    const { type, shotPresetIds, imagePaths, productId = null } = payload;
-    if (!imagePaths || imagePaths.length === 0) {
-        throw new Error('At least one source image is required to create video assets');
-    }
-    if (!shotPresetIds || shotPresetIds.length === 0) {
-        throw new Error('At least one shot preset must be selected');
+    const { type, shotPresetIds, imagePaths, logoAnimationIds = [], logoPaths = [], productId = null, model = 'runway' } = payload;
+    // Validate - at least one of (product images + shots) or (logo + animations)
+    const hasProductVideos = imagePaths.length > 0 && shotPresetIds.length > 0;
+    const hasLogoAnimations = logoPaths.length > 0 && logoAnimationIds.length > 0;
+    if (!hasProductVideos && !hasLogoAnimations) {
+        throw new Error('At least one product image + shot or one logo + animation must be provided');
     }
     const { jobs } = await getVideoAssetsConfig();
     const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1925,28 +2049,39 @@ ipcMain.handle('videoAssets:createJob', async (_e, payload) => {
         productId,
         sourceImages: imagePaths,
         shotPresetIds,
+        logoAnimationIds,
+        logoPaths,
         status: 'pending',
         createdAt: now,
         updatedAt: now,
         resultAssets: [],
-        error: null
+        error: null,
+        model: model
     };
     const nextJobs = [...jobs, job];
     await saveVideoAssetsConfig(nextJobs);
-    // Process shots in background (don't await)
-    processVideoAssetJob(id, type, shotPresetIds, imagePaths).catch(err => {
+    // Process shots + logos in background (don't await)
+    processVideoAssetJob(id, type, shotPresetIds, imagePaths, logoAnimationIds, logoPaths, model).catch(err => {
         console.error(`[VIDEO ASSETS] Job ${id} failed:`, err);
     });
     return job;
 });
 // Background processor for video asset jobs
-async function processVideoAssetJob(jobId, type, shotPresetIds, imagePaths) {
-    console.log(`[VIDEO ASSETS] Starting job ${jobId} with ${shotPresetIds.length} shots`);
+async function processVideoAssetJob(jobId, type, shotPresetIds, imagePaths, logoAnimationIds, logoPaths, model = 'runway') {
+    const totalAssets = shotPresetIds.length + logoAnimationIds.length;
+    console.log(`[VIDEO ASSETS] Starting job ${jobId} with ${shotPresetIds.length} product shots + ${logoAnimationIds.length} logo animations using ${model}`);
     try {
         // Update status to "running"
         await updateVideoAssetJobStatus(jobId, 'running', null);
         if (type === 'ai_video_pack') {
-            await processAIVideoPack(jobId, shotPresetIds, imagePaths);
+            // Process product videos (if any)
+            if (shotPresetIds.length > 0 && imagePaths.length > 0) {
+                await processAIVideoPack(jobId, shotPresetIds, imagePaths, model);
+            }
+            // Process logo animations (if any)
+            if (logoAnimationIds.length > 0 && logoPaths.length > 0) {
+                await processLogoAnimations(jobId, logoAnimationIds, logoPaths, model);
+            }
         }
         else if (type === '3d_render_pack') {
             // 3D rendering not implemented yet
@@ -1965,7 +2100,7 @@ async function processVideoAssetJob(jobId, type, shotPresetIds, imagePaths) {
     }
 }
 // Process AI video pack using Replicate
-async function processAIVideoPack(jobId, shotPresetIds, imagePaths) {
+async function processAIVideoPack(jobId, shotPresetIds, imagePaths, model = 'runway') {
     const config = await loadConfig();
     const replicateApiKey = config.api_keys?.replicate;
     if (!replicateApiKey) {
@@ -1981,7 +2116,7 @@ async function processAIVideoPack(jobId, shotPresetIds, imagePaths) {
     const primaryImage = imagePaths[0];
     // Process all shots in parallel (fan-out)
     const shotPromises = shotPresetIds.map(async (shotId) => {
-        console.log(`[VIDEO ASSETS] Generating shot: ${shotId}`);
+        console.log(`[VIDEO ASSETS] Generating shot: ${shotId} using ${model}`);
         const template = (0, video_asset_prompts_1.getShotTemplate)(shotId);
         if (!template) {
             throw new Error(`Unknown shot preset: ${shotId}`);
@@ -1989,16 +2124,29 @@ async function processAIVideoPack(jobId, shotPresetIds, imagePaths) {
         // Build prompt with generic product description
         const prompt = (0, video_asset_prompts_1.buildShotPrompt)(shotId, 'the product on display');
         try {
-            // Generate 5-second video with 16:9 aspect ratio (default for product videos)
-            const videoPath = await client.generateVideo(primaryImage, prompt, outputDir, (status) => {
-                console.log(`[VIDEO ASSETS] Shot ${shotId}: ${status}`);
-            }, 5, // duration in seconds (5 or 10)
-            '16:9' // aspect ratio for landscape product videos
-            );
+            let videoPath;
+            if (model === 'veo') {
+                // Map template durations (3s) to Veo durations (4/6/8s)
+                // 3s -> 4s (Veo's minimum)
+                const veoDuration = 4;
+                videoPath = await client.generateVideoVeo(primaryImage, prompt, outputDir, (status) => {
+                    console.log(`[VIDEO ASSETS] Shot ${shotId}: ${status}`);
+                }, veoDuration, '16:9', // aspect ratio for landscape product videos
+                '720p' // resolution
+                );
+            }
+            else {
+                // Runway Gen-4 Turbo (only supports 5s or 10s, so we use 5s)
+                videoPath = await client.generateVideo(primaryImage, prompt, outputDir, (status) => {
+                    console.log(`[VIDEO ASSETS] Shot ${shotId}: ${status}`);
+                }, 5, // Runway minimum duration
+                '16:9' // aspect ratio for landscape product videos
+                );
+            }
             console.log(`[VIDEO ASSETS] Shot ${shotId} completed: ${videoPath}`);
             return {
                 shotId,
-                provider: 'replicate',
+                provider: model === 'veo' ? 'veo' : 'replicate',
                 url: `file://${videoPath}`,
                 durationSec: template.duration
             };
@@ -2016,6 +2164,70 @@ async function processAIVideoPack(jobId, shotPresetIds, imagePaths) {
     const jobIndex = jobs.findIndex(j => j.id === jobId);
     if (jobIndex >= 0) {
         jobs[jobIndex].resultAssets = resultAssets;
+        jobs[jobIndex].updatedAt = new Date().toISOString();
+        await saveVideoAssetsConfig(jobs);
+    }
+}
+// Process logo animations using Replicate
+async function processLogoAnimations(jobId, animationIds, logoPaths, model = 'runway') {
+    const config = await loadConfig();
+    const replicateApiKey = config.api_keys?.replicate;
+    if (!replicateApiKey) {
+        throw new Error('Replicate API key not configured. Please set your API key in Settings → API Keys.');
+    }
+    const client = new replicate_client_1.ReplicateClient({ apiToken: replicateApiKey });
+    const outputDir = path.join((0, replicate_client_1.getVideoAssetsDir)(), jobId);
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const resultAssets = [];
+    // Use first logo for all animations (could be extended to use different logos per animation)
+    const primaryLogo = logoPaths[0];
+    // Process all animations in parallel (fan-out)
+    const animationPromises = animationIds.map(async (animationId) => {
+        console.log(`[VIDEO ASSETS] Generating logo animation: ${animationId} using ${model}`);
+        const template = (0, logo_animation_prompts_1.getLogoAnimationTemplate)(animationId);
+        if (!template) {
+            throw new Error(`Unknown logo animation preset: ${animationId}`);
+        }
+        // Build prompt with generic logo description (could be enhanced to describe actual logo)
+        const prompt = (0, logo_animation_prompts_1.buildLogoAnimationPrompt)(animationId, 'brand logo');
+        try {
+            let videoPath;
+            if (model === 'veo') {
+                // Veo minimum duration is 4s
+                videoPath = await client.generateVideoVeo(primaryLogo, prompt, outputDir, (status) => {
+                    console.log(`[VIDEO ASSETS] Logo animation ${animationId}: ${status}`);
+                }, 4, '16:9', '720p');
+            }
+            else {
+                // Runway Gen-4 Turbo (5s minimum)
+                videoPath = await client.generateVideo(primaryLogo, prompt, outputDir, (status) => {
+                    console.log(`[VIDEO ASSETS] Logo animation ${animationId}: ${status}`);
+                }, 5, '16:9');
+            }
+            console.log(`[VIDEO ASSETS] Logo animation ${animationId} completed: ${videoPath}`);
+            return {
+                shotId: animationId,
+                provider: model === 'veo' ? 'veo' : 'replicate',
+                url: `file://${videoPath}`,
+                durationSec: template.duration
+            };
+        }
+        catch (err) {
+            console.error(`[VIDEO ASSETS] Logo animation ${animationId} failed:`, err);
+            throw new Error(`Logo animation ${animationId} failed: ${err.message}`);
+        }
+    });
+    // Wait for all animations to complete
+    const results = await Promise.all(animationPromises);
+    resultAssets.push(...results);
+    // Update job with results (merge with existing product videos if any)
+    const { jobs } = await getVideoAssetsConfig();
+    const jobIndex = jobs.findIndex(j => j.id === jobId);
+    if (jobIndex >= 0) {
+        // Append to existing results instead of replacing
+        jobs[jobIndex].resultAssets = [...jobs[jobIndex].resultAssets, ...resultAssets];
         jobs[jobIndex].updatedAt = new Date().toISOString();
         await saveVideoAssetsConfig(jobs);
     }

@@ -11,7 +11,8 @@
     "build": "vite build && tsc -p electron",
     "postinstall": "electron-builder install-app-deps",
     "pack": "set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --dir",
-    "dist": "set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder"
+    "dist": "set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder",
+    "convert": "node scripts/convert-to-png.js"
   },
   "dependencies": {
     "concurrently": "^9.0.0",
@@ -33,6 +34,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^32.3.3",
     "electron-builder": "^24.13.3",
+    "sharp": "^0.34.5",
     "typescript": "^5.6.2",
     "vite": "^5.4.6"
   },

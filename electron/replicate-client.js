@@ -152,6 +152,106 @@ class ReplicateClient {
         });
     }
     /**
+     * Upscale video to 4K using Runway Upscale-v1
+     *
+     * Upscale-v1 features:
+     * - 4x resolution increase (capped at 4K)
+     * - Temporal consistency (smooth between frames)
+     * - Best for short videos (<30s)
+     * - Works on any video resolution
+     */
+    async upscaleVideo(videoPath, outputDir, onProgress) {
+        // Read video as base64 or use file URL
+        // Note: For large videos, may need to use URL instead of base64
+        const videoBuffer = fs_1.default.readFileSync(videoPath);
+        const videoBase64 = `data:video/mp4;base64,${videoBuffer.toString('base64')}`;
+        // Use Runway Upscale-v1
+        // Reference: https://replicate.com/runwayml/upscale-v1
+        const model = 'runwayml/upscale-v1';
+        if (onProgress)
+            onProgress('Uploading video for upscaling...');
+        const prediction = await this.createPrediction(model, {
+            video: videoBase64
+        });
+        if (onProgress)
+            onProgress('Upscaling to 4K (this may take 2-5 minutes)...');
+        const completed = await this.waitForPrediction(prediction.id, (status, logs) => {
+            if (onProgress) {
+                if (status === 'processing') {
+                    onProgress(`Upscaling to 4K...`);
+                }
+                else {
+                    onProgress(`Status: ${status}`);
+                }
+            }
+        }, 600000 // 10 minute timeout
+        );
+        if (!completed.output) {
+            throw new Error('No output URL in completed prediction');
+        }
+        const videoUrl = Array.isArray(completed.output) ? completed.output[0] : completed.output;
+        const outputPath = path_1.default.join(outputDir, `upscaled_${path_1.default.basename(videoPath)}`);
+        if (onProgress)
+            onProgress('Downloading 4K video...');
+        await this.downloadVideo(videoUrl, outputPath);
+        if (onProgress)
+            onProgress('Complete!');
+        return outputPath;
+    }
+    /**
+     * Generate video from image with prompt using Google Veo 3.1
+     *
+     * Veo 3.1 supports:
+     * - Image-to-video with synchronized audio
+     * - Superior prompt understanding and character consistency
+     * - 4s, 6s, or 8s duration
+     * - 720p or 1080p output
+     * - Landscape (16:9) or portrait (9:16)
+     *
+     * Reference: https://replicate.com/google/veo-3.1
+     */
+    async generateVideoVeo(imagePath, prompt, outputDir, onProgress, duration = 6, aspectRatio = '16:9', resolution = '720p') {
+        // Read image as base64
+        const imageBuffer = fs_1.default.readFileSync(imagePath);
+        const imageBase64 = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+        // Use Google Veo 3.1
+        const model = 'google/veo-3.1';
+        if (onProgress)
+            onProgress('Creating prediction with Veo 3.1...');
+        const prediction = await this.createPrediction(model, {
+            prompt: prompt,
+            image: imageBase64,
+            duration: duration,
+            aspect_ratio: aspectRatio,
+            resolution: resolution,
+        });
+        if (onProgress)
+            onProgress('Generating video with Veo 3.1 (this may take 30-90 seconds)...');
+        const completed = await this.waitForPrediction(prediction.id, (status, logs) => {
+            if (onProgress) {
+                if (status === 'processing') {
+                    onProgress(`Processing with Veo 3.1...`);
+                }
+                else {
+                    onProgress(`Status: ${status}`);
+                }
+            }
+        }, 180000 // 3 minute timeout (Veo can be slower)
+        );
+        if (!completed.output) {
+            throw new Error('No output URL in completed prediction');
+        }
+        // Veo output is a video URL
+        const videoUrl = Array.isArray(completed.output) ? completed.output[0] : completed.output;
+        const outputPath = path_1.default.join(outputDir, `${prediction.id}.mp4`);
+        if (onProgress)
+            onProgress('Downloading video...');
+        await this.downloadVideo(videoUrl, outputPath);
+        if (onProgress)
+            onProgress('Complete!');
+        return outputPath;
+    }
+    /**
      * Generate video from image with prompt using Runway Gen-4 Turbo
      *
      * Gen-4 Turbo supports:
@@ -208,9 +308,11 @@ class ReplicateClient {
 exports.ReplicateClient = ReplicateClient;
 /**
  * Helper to get output directory for video assets
+ * Saves to Downloads for easy access
  */
 function getVideoAssetsDir() {
-    const dir = path_1.default.join(electron_1.app.getPath('userData'), 'VideoAssets');
+    const downloadsPath = electron_1.app.getPath('downloads');
+    const dir = path_1.default.join(downloadsPath, 'Video_Assets');
     if (!fs_1.default.existsSync(dir)) {
         fs_1.default.mkdirSync(dir, { recursive: true });
     }

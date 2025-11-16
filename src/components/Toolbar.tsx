@@ -491,8 +491,8 @@ export default function Toolbar() {
         <button onClick={handleExportClick} disabled={isExporting || isImporting || allClips.length === 0}>
           {isExporting ? 'Exporting...' : 'Export'}
         </button>
-        <button onClick={() => setShowEnhanceModal(true)} disabled={isExporting || isImporting || !selectedClip || (selectedClip.height || 0) >= 720}>
-          Enhance
+        <button onClick={() => setShowEnhanceModal(true)} disabled={isExporting || isImporting || !selectedClip}>
+          Enhance / Upscale
         </button>
         <button onClick={extractFrames} disabled={isExporting || isImporting || !selectedClip}>
           Extract Frames

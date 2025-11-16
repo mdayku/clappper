@@ -6,6 +6,23 @@ declare global {
     clappper: {
       openFiles: () => Promise<string[]>
       openImageFiles: () => Promise<string[]>
+      detectImageFormats: (filePaths: string[]) => Promise<{
+        files: Array<{
+          path: string
+          extension: string
+          needsConversion: boolean
+          isSupported: boolean
+          fileName: string
+        }>
+        needsConversion: boolean
+        unsupportedCount: number
+      }>
+      convertImagesToPng: (filePaths: string[]) => Promise<Array<{
+        success: boolean
+        inputPath: string
+        outputPath?: string
+        error?: string
+      }>>
       savePath: (defaultName: string) => Promise<string | null>
       ffprobe: (filePath: string) => Promise<{
         format: {
@@ -67,7 +84,9 @@ declare global {
       onMenuChangeApiKey: (callback: () => void) => void
       getScreenSources: () => Promise<Array<{ id: string; name: string; thumbnail: string }>>
       saveRecording: (filePath: string, base64Data: string) => Promise<{ ok: boolean }>
+      getDownloadsPath: () => Promise<string>
       enhanceVideo: (payload: { input: string; output: string }) => Promise<{ ok: boolean; outPath: string; outputWidth?: number; outputHeight?: number; scale?: number }>
+      upscaleRunway: (payload: { input: string; output: string }) => Promise<{ ok: boolean; outPath: string; outputWidth?: number; outputHeight?: number; scale?: number }>
       enhanceCancel: () => Promise<{ ok: boolean; cancelled?: boolean; message?: string }>
       detectGPU: () => Promise<{ detected: boolean; name: string; vram: string; estimatedFps: number }>
       onEnhanceProgress: (callback: (progress: { stage: string; frame: number; totalFrames: number; percent: number; eta: string; outputResolution?: string; scale?: number; fps?: string }) => void) => void
@@ -170,13 +189,18 @@ declare global {
         type: 'ai_video_pack' | '3d_render_pack'
         shotPresetIds: string[]
         imagePaths: string[]
+        logoAnimationIds?: string[]
+        logoPaths?: string[]
         productId?: string | null
+        model?: 'runway' | 'veo'
       }) => Promise<{
         id: string
         type: 'ai_video_pack' | '3d_render_pack'
         productId?: string | null
         sourceImages: string[]
         shotPresetIds: string[]
+        logoAnimationIds?: string[]
+        logoPaths?: string[]
         status: 'pending' | 'running' | 'completed' | 'failed'
         createdAt: string
         updatedAt: string
@@ -189,6 +213,7 @@ declare global {
           height?: number
         }>
         error?: string | null
+        model?: 'runway' | 'veo'
       }>
       listVideoAssetsJobs: () => Promise<Array<{
         id: string
@@ -196,6 +221,8 @@ declare global {
         productId?: string | null
         sourceImages: string[]
         shotPresetIds: string[]
+        logoAnimationIds?: string[]
+        logoPaths?: string[]
         status: 'pending' | 'running' | 'completed' | 'failed'
         createdAt: string
         updatedAt: string
@@ -208,6 +235,7 @@ declare global {
           height?: number
         }>
         error?: string | null
+        model?: 'runway' | 'veo'
       }>>
     }
   }

@@ -60,6 +60,7 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
   const [showComparison, setShowComparison] = useState(false)
   const [enhancedVideoPath, setEnhancedVideoPath] = useState<string | null>(null)
   const [enhancedResolution, setEnhancedResolution] = useState<string | null>(null)
+  const [provider, setProvider] = useState<'local' | 'runway'>('local')
 
   const clip = clipId ? useStore.getState().getClipById(clipId) : null
   const selectedClip = useStore.getState().selectedId ? useStore.getState().getClipById(useStore.getState().selectedId!) : null
@@ -97,17 +98,25 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
       setIsEnhancing(true)
       setProgress(null)
 
-      // Generate output path next to input (handle both Windows and macOS path separators)
-      const sepIndex = Math.max(activeClip.path.lastIndexOf('/'), activeClip.path.lastIndexOf('\\'))
-      const inputDir = sepIndex >= 0 ? activeClip.path.slice(0, sepIndex) : '.'
-      const inputName = sepIndex >= 0 ? activeClip.path.slice(sepIndex + 1) : activeClip.path
+      // Generate output path in Downloads/Video_Assets/enhanced/
+      const downloadsDir = await window.clappper.getDownloadsPath()
+      const outputDir = `${downloadsDir}/Video_Assets/enhanced`
+      const inputName = activeClip.path.split(/[/\\]/).pop() || 'video.mp4'
       const nameWithoutExt = inputName.substring(0, inputName.lastIndexOf('.'))
-      const outputPath = `${inputDir}/${nameWithoutExt}_enhanced.mp4`
+      const timestamp = Date.now()
+      const providerSuffix = provider === 'runway' ? '4k' : 'enhanced'
+      const outputPath = `${outputDir}/${nameWithoutExt}_${providerSuffix}_${timestamp}.mp4`
 
-      const result = await window.clappper.enhanceVideo({
-        input: activeClip.path,
-        output: outputPath
-      })
+      // Call appropriate backend method based on provider
+      const result = provider === 'runway'
+        ? await window.clappper.upscaleRunway({
+            input: activeClip.path,
+            output: outputPath
+          })
+        : await window.clappper.enhanceVideo({
+            input: activeClip.path,
+            output: outputPath
+          })
 
       if (result.ok) {
         // Import the enhanced video
@@ -177,7 +186,6 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
 
   if (!isOpen || !activeClip) return null
 
-  const isLowRes = (activeClip.height || 0) < 720
   const { scale: finalScale, outputWidth: finalOutputWidth, outputHeight: finalOutputHeight } = calculateOptimalScale(activeClip.width || 0, activeClip.height || 0)
   
   // Calculate estimated processing time
@@ -212,8 +220,36 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
       }}>
         <h3 style={{ margin: '0 0 16px 0', color: '#333' }}>
-          AI Video Enhancement
+          AI Video Enhancement / Upscaling
         </h3>
+
+        {/* Provider Selection */}
+        <div style={{ marginBottom: 20, padding: 12, background: '#f8f9fa', borderRadius: 6 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: '#333', display: 'block', marginBottom: 8 }}>
+            Enhancement Provider
+          </label>
+          <select
+            value={provider}
+            onChange={e => setProvider(e.target.value as 'local' | 'runway')}
+            disabled={isEnhancing}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              fontSize: 14,
+              border: '1px solid #ccc',
+              borderRadius: 4,
+              background: 'white'
+            }}
+          >
+            <option value="local">Local GPU (Real-ESRGAN) - Up to 1080p, Fast</option>
+            <option value="runway">Cloud API (Runway Upscale) - 4K, Slower</option>
+          </select>
+          <div style={{ fontSize: 11, color: '#666', marginTop: 6, fontStyle: 'italic' }}>
+            {provider === 'local' 
+              ? '✓ Uses your GPU for fast processing. Capped at 1080p for optimal performance.' 
+              : '☁️ Cloud-based 4K upscaling. Requires Replicate API key. Processing time: 2-5 minutes.'}
+          </div>
+        </div>
 
         {/* Clip Info */}
         <div style={{ marginBottom: 20 }}>
@@ -221,29 +257,42 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
             <strong>Clip:</strong> {activeClip.name}
           </div>
           <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-            <strong>Resolution:</strong> {activeClip.width}×{activeClip.height}
-            {isLowRes && <span style={{ color: '#e74c3c', marginLeft: 8 }}>⚠️ Low resolution</span>}
+            <strong>Current Resolution:</strong> {activeClip.width}×{activeClip.height}
           </div>
           <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
             <strong>Duration:</strong> {activeClip.duration.toFixed(1)}s
           </div>
-          <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-            <strong>Output Resolution:</strong> {finalOutputWidth}×{finalOutputHeight} ({finalScale}× upscale, auto-optimized)
-          </div>
-          <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-            <strong>Model:</strong> Real-ESRGAN x4plus
-          </div>
-          {gpuInfo && gpuInfo.detected && (
-            <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-              <strong>GPU:</strong> {gpuInfo.name}
-            </div>
+          {provider === 'local' && (
+            <>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <strong>Output Resolution:</strong> {finalOutputWidth}×{finalOutputHeight} ({finalScale}× upscale, auto-optimized)
+              </div>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <strong>Model:</strong> Real-ESRGAN x4plus
+              </div>
+              {gpuInfo && gpuInfo.detected && (
+                <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                  <strong>GPU:</strong> {gpuInfo.name}
+                </div>
+              )}
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <strong>Estimated Time:</strong> {estimatedTimeString}
+              </div>
+            </>
           )}
-          <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-            <strong>Estimated Time:</strong> {estimatedTimeString}
-          </div>
-          <div style={{ fontSize: 12, color: '#999', fontStyle: 'italic', marginTop: 8 }}>
-            Scale factor automatically chosen to maximize quality while staying within 1080p limit.
-          </div>
+          {provider === 'runway' && (
+            <>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <strong>Output Resolution:</strong> Up to 4K (4× upscale, capped at 3840×2160)
+              </div>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <strong>Model:</strong> Runway Upscale-v1
+              </div>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <strong>Estimated Time:</strong> ~2-5 minutes (cloud processing)
+              </div>
+            </>
+          )}
         </div>
 
         {/* Progress */}
@@ -346,26 +395,26 @@ export default function EnhanceModal({ isOpen, onClose, clipId }: EnhanceModalPr
           {!isEnhancing && !enhancedVideoPath && (
             <button
               onClick={startEnhancement}
-              disabled={!isLowRes}
               style={{
                 padding: '8px 16px',
                 fontSize: 14,
                 border: 'none',
                 borderRadius: 4,
-                backgroundColor: isLowRes ? '#007acc' : '#ccc',
+                backgroundColor: '#007acc',
                 color: 'white',
-                cursor: isLowRes ? 'pointer' : 'not-allowed'
+                cursor: 'pointer'
               }}
             >
-              {isLowRes ? 'Enhance Video' : 'Already High Resolution'}
+              {provider === 'runway' ? 'Upscale to 4K' : 'Enhance Video'}
             </button>
           )}
         </div>
 
         {/* Info */}
         <div style={{ marginTop: 16, fontSize: 12, color: '#999' }}>
-          This will create a {finalScale}× upscaled version ({finalOutputWidth}×{finalOutputHeight}) using AI super-resolution.
-          Processing time depends on video length and your GPU performance. Output capped at 1080p for optimal performance.
+          {provider === 'local' 
+            ? `This will create a ${finalScale}× upscaled version (${finalOutputWidth}×${finalOutputHeight}) using AI super-resolution. Processing time depends on video length and your GPU performance. Output capped at 1080p for optimal performance.`
+            : 'This will upscale your video to 4K (up to 3840×2160) using Runway\'s cloud API. Processing typically takes 2-5 minutes regardless of video length. Requires Replicate API key.'}
         </div>
       </div>
       

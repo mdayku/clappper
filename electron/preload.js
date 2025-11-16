@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('clappper', {
     openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
     openImageFiles: () => ipcRenderer.invoke('dialog:openImageFiles'),
+    detectImageFormats: (filePaths) => ipcRenderer.invoke('images:detectFormats', filePaths),
+    convertImagesToPng: (filePaths) => ipcRenderer.invoke('images:convertToPng', filePaths),
     savePath: (defaultName) => ipcRenderer.invoke('dialog:savePath', defaultName),
     ffprobe: (filePath) => ipcRenderer.invoke('ffprobe:metadata', filePath),
     generateThumbnail: (payload) => ipcRenderer.invoke('thumbnail:generate', payload),
@@ -36,7 +38,9 @@ contextBridge.exposeInMainWorld('clappper', {
     },
     getScreenSources: () => ipcRenderer.invoke('screen:get-sources'),
     saveRecording: (filePath, base64Data) => ipcRenderer.invoke('screen:save-recording', { filePath, base64Data }),
+    getDownloadsPath: () => ipcRenderer.invoke('system:getDownloadsPath'),
     enhanceVideo: (payload) => ipcRenderer.invoke('ai:enhance', payload),
+    upscaleRunway: (payload) => ipcRenderer.invoke('ai:upscale-runway', payload),
     enhanceCancel: () => ipcRenderer.invoke('ai:enhance:cancel'),
     detectGPU: () => ipcRenderer.invoke('ai:detect-gpu'),
     onEnhanceProgress: (cb) => {

@@ -17,10 +17,32 @@ const SHOT_PRESETS: { id: string; label: string; description: string }[] = [
   { id: 'top_down', label: 'Top-down', description: 'Overhead view of the product' }
 ]
 
+const LOGO_ANIMATION_PRESETS: { id: string; label: string; description: string }[] = [
+  { id: 'fade_scale_in', label: 'Fade & Scale In', description: 'Logo fades in while gently scaling up' },
+  { id: 'slide_from_left', label: 'Slide from Left', description: 'Logo slides in smoothly from the left' },
+  { id: 'glow_reveal', label: 'Glow Reveal', description: 'Logo appears with glowing light effect' },
+  { id: 'minimal_zoom', label: 'Minimal Zoom', description: 'Subtle zoom in with focus shift' },
+  { id: 'rotate_assemble', label: 'Rotate & Assemble', description: 'Logo elements rotate into place' }
+]
+
 export default function VideoAssetsModal({ isOpen, onClose }: Props) {
+  const [activeTab, setActiveTab] = useState<'product' | 'logo'>('product')
   const [type, setType] = useState<'ai_video_pack' | '3d_render_pack'>('ai_video_pack')
+  
+  // Product video state
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>(SHOT_PRESETS.map(p => p.id))
   const [selectedImages, setSelectedImages] = useState<string[]>([])
+  
+  // Logo animation state
+  const [selectedLogoAnimations, setSelectedLogoAnimations] = useState<string[]>(LOGO_ANIMATION_PRESETS.map(p => p.id))
+  const [selectedLogos, setSelectedLogos] = useState<string[]>([])
+  const [conversionInfo, setConversionInfo] = useState<{
+    needsConversion: boolean
+    files: Array<{ path: string; extension: string; fileName: string }>
+  } | null>(null)
+  const [isConverting, setIsConverting] = useState(false)
+  
+  const [model, setModel] = useState<'runway' | 'veo'>('veo') // Default to Veo for consistency
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
@@ -62,6 +84,12 @@ export default function VideoAssetsModal({ isOpen, onClose }: Props) {
   const toggleShot = (id: string) => {
     setSelectedShotIds(prev =>
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    )
+  }
+
+  const toggleLogoAnimation = (id: string) => {
+    setSelectedLogoAnimations(prev =>
+      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
     )
   }
 
@@ -129,7 +157,8 @@ export default function VideoAssetsModal({ isOpen, onClose }: Props) {
     try {
       const files: string[] = await window.clappper.openImageFiles()
       if (!files || files.length === 0) return
-      setSelectedImages(files)
+      // Only use the first selected file (AI models use 1 image per prompt)
+      setSelectedImages([files[0]])
       setError(null)
     } catch (err) {
       console.error('Failed to select images:', err)
@@ -137,28 +166,135 @@ export default function VideoAssetsModal({ isOpen, onClose }: Props) {
     }
   }
 
+  const handleSelectLogos = async () => {
+    try {
+      const files: string[] = await window.clappper.openImageFiles()
+      if (!files || files.length === 0) return
+      
+      // Only use the first selected file (AI models use 1 image per prompt)
+      const singleFile = [files[0]]
+      
+      // Detect if any files need conversion
+      const detection = await window.clappper.detectImageFormats(singleFile)
+      
+      if (detection.needsConversion) {
+        // Show conversion prompt
+        setConversionInfo({
+          needsConversion: true,
+          files: detection.files.filter(f => f.needsConversion)
+        })
+        setSelectedLogos(singleFile) // Store original path temporarily
+      } else {
+        // Already PNG/JPG
+        setSelectedLogos(singleFile)
+        setConversionInfo(null)
+      }
+      
+      setError(null)
+    } catch (err) {
+      console.error('Failed to select logo:', err)
+      setError('Failed to open image picker')
+    }
+  }
+  
+  const handleConvertImages = async () => {
+    if (!selectedLogos.length) return
+    
+    setIsConverting(true)
+    setError(null)
+    
+    try {
+      // Filter only files that need conversion
+      const filesToConvert = conversionInfo?.files.map(f => f.path) || []
+      
+      // Convert the files
+      const results = await window.clappper.convertImagesToPng(filesToConvert)
+      
+      // Check for failures
+      const failed = results.filter(r => !r.success)
+      if (failed.length > 0) {
+        setError(`Failed to convert ${failed.length} file(s): ${failed.map(f => f.error).join(', ')}`)
+        setIsConverting(false)
+        return
+      }
+      
+      // Replace paths with converted PNG paths
+      const updatedPaths = selectedLogos.map(originalPath => {
+        const converted = results.find(r => r.inputPath === originalPath)
+        return converted?.outputPath || originalPath
+      })
+      
+      setSelectedLogos(updatedPaths)
+      setConversionInfo(null)
+      setIsConverting(false)
+      
+      console.log(`✓ Converted ${results.length} image(s) to PNG`)
+    } catch (err: any) {
+      console.error('Conversion failed:', err)
+      setError(`Conversion failed: ${err.message}`)
+      setIsConverting(false)
+    }
+  }
+  
+  const handleCancelConversion = () => {
+    setConversionInfo(null)
+    setSelectedLogos([])
+  }
+
   const handleCreate = async () => {
     try {
       setError(null)
-      if (selectedImages.length === 0) {
-        setError('Please select at least one product image.')
-        return
+      
+      // Only run one job type at a time based on active tab
+      if (activeTab === 'product') {
+        // Product video validation
+        if (selectedImages.length === 0) {
+          setError('Please select a product image.')
+          return
+        }
+        if (selectedShotIds.length === 0) {
+          setError('Please select at least one shot type.')
+          return
+        }
+        
+        setIsSubmitting(true)
+        const job: VideoAssetJob = await window.clappper.createVideoAssetsJob({
+          type,
+          shotPresetIds: selectedShotIds,
+          imagePaths: selectedImages,
+          logoAnimationIds: [], // Only product videos
+          logoPaths: [],
+          model: model
+        })
+        setVideoAssetJobs([job, ...videoAssetJobs])
+        setIsSubmitting(false)
+        
+        alert(`Product video job created! Processing ${selectedShotIds.length} shots. Check the job list below for progress.`)
+      } else {
+        // Logo animation validation
+        if (selectedLogos.length === 0) {
+          setError('Please select a logo image.')
+          return
+        }
+        if (selectedLogoAnimations.length === 0) {
+          setError('Please select at least one animation style.')
+          return
+        }
+        
+        setIsSubmitting(true)
+        const job: VideoAssetJob = await window.clappper.createVideoAssetsJob({
+          type,
+          shotPresetIds: [], // Only logo animations
+          imagePaths: [],
+          logoAnimationIds: selectedLogoAnimations,
+          logoPaths: selectedLogos,
+          model: model
+        })
+        setVideoAssetJobs([job, ...videoAssetJobs])
+        setIsSubmitting(false)
+        
+        alert(`Logo animation job created! Processing ${selectedLogoAnimations.length} animations. Check the job list below for progress.`)
       }
-      if (selectedShotIds.length === 0) {
-        setError('Please select at least one shot preset.')
-        return
-      }
-      setIsSubmitting(true)
-      const job: VideoAssetJob = await window.clappper.createVideoAssetsJob({
-        type,
-        shotPresetIds: selectedShotIds,
-        imagePaths: selectedImages
-      })
-      // Prepend new job for recency
-      setVideoAssetJobs([job, ...videoAssetJobs])
-      setIsSubmitting(false)
-      // Don't close modal - let user see progress
-      alert(`Video asset job created! Processing ${selectedShotIds.length} shots. Check the job list below for progress.`)
     } catch (err: any) {
       console.error('Failed to create video asset job:', err)
       setIsSubmitting(false)
@@ -193,130 +329,323 @@ export default function VideoAssetsModal({ isOpen, onClose }: Props) {
           boxShadow: '0 12px 40px rgba(0,0,0,0.35)'
         }}
       >
-        <h2 style={{ marginTop: 0, marginBottom: 8 }}>Create Video Assets</h2>
+        <h2 style={{ marginTop: 0, marginBottom: 16 }}>Create Video Assets</h2>
+        
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '2px solid #eee' }}>
+          <button
+            onClick={() => setActiveTab('product')}
+            style={{
+              padding: '8px 16px',
+              fontSize: 14,
+              fontWeight: activeTab === 'product' ? 'bold' : 'normal',
+              border: 'none',
+              borderBottom: activeTab === 'product' ? '3px solid #007bff' : '3px solid transparent',
+              background: 'transparent',
+              color: activeTab === 'product' ? '#007bff' : '#666',
+              cursor: 'pointer',
+              marginBottom: -2
+            }}
+          >
+            📦 Product Videos
+          </button>
+          <button
+            onClick={() => setActiveTab('logo')}
+            style={{
+              padding: '8px 16px',
+              fontSize: 14,
+              fontWeight: activeTab === 'logo' ? 'bold' : 'normal',
+              border: 'none',
+              borderBottom: activeTab === 'logo' ? '3px solid #007bff' : '3px solid transparent',
+              background: 'transparent',
+              color: activeTab === 'logo' ? '#007bff' : '#666',
+              cursor: 'pointer',
+              marginBottom: -2
+            }}
+          >
+            🏷️ Logo Animations
+          </button>
+        </div>
+        
         <p style={{ fontSize: 13, color: '#555', marginBottom: 16 }}>
-          Generate professional product videos using{' '}
-          <strong>Runway Gen-4 Turbo</strong> AI. Each shot is 5 seconds at 720p with cinematic quality.
-          Requires a Replicate API key (set in Settings → API Keys).
+          {activeTab === 'product' 
+            ? 'Generate professional product videos using AI models. Each shot is 3-5 seconds with cinematic quality.'
+            : 'Create animated logo end cards for your ads. Each animation is 2 seconds with professional motion.'}
+          {' '}Requires a Replicate API key (set in Settings → API Keys).
         </p>
 
-        {/* Type selector */}
-        <div style={{ marginBottom: 16 }}>
-          <label
-            style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 'bold',
-              marginBottom: 6
-            }}
-          >
-            Pipeline
-          </label>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <label style={{ fontSize: 13, cursor: 'pointer' }}>
-              <input
-                type="radio"
-                name="videoAssetsType"
-                value="ai_video_pack"
-                checked={type === 'ai_video_pack'}
-                onChange={() => setType('ai_video_pack')}
-              />{' '}
-              AI Video Pack (hosted models)
+        {/* Model selector (applies to both product and logo) */}
+        {type === 'ai_video_pack' && (
+          <div style={{ marginBottom: 16, padding: 12, background: '#f8f9fa', borderRadius: 6 }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 13,
+                fontWeight: 'bold',
+                marginBottom: 6
+              }}
+            >
+              AI Model
             </label>
-            <label style={{ fontSize: 13, cursor: 'pointer' }}>
-              <input
-                type="radio"
-                name="videoAssetsType"
-                value="3d_render_pack"
-                checked={type === '3d_render_pack'}
-                onChange={() => setType('3d_render_pack')}
-              />{' '}
-              3D Render Pack (Blender)
-            </label>
-          </div>
-        </div>
-
-        {/* Image selection */}
-        <div style={{ marginBottom: 16 }}>
-          <label
-            style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 'bold',
-              marginBottom: 6
-            }}
-          >
-            Product Images
-          </label>
-          <button
-            onClick={handleSelectImages}
-            style={{
-              padding: '6px 12px',
-              fontSize: 13,
-              borderRadius: 4,
-              border: '1px solid #ccc',
-              cursor: 'pointer',
-              background: '#f8f9fa'
-            }}
-            disabled={isSubmitting}
-          >
-            {selectedImages.length > 0 ? 'Change Images…' : 'Select Images…'}
-          </button>
-          {selectedImages.length > 0 && (
-            <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
-              {selectedImages.length} image(s) selected
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value as 'runway' | 'veo')}
+              disabled={isSubmitting}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                fontSize: 13,
+                border: '1px solid #ccc',
+                borderRadius: 4,
+                background: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="veo">Google Veo 3.1 - Superior consistency, 720p/1080p, includes audio</option>
+              <option value="runway">Runway Gen-4 Turbo - Fast, 720p, high quality</option>
+            </select>
+            <div style={{ fontSize: 11, color: '#666', marginTop: 6, fontStyle: 'italic' }}>
+              {model === 'veo' 
+                ? '✓ Recommended for consistent look across all ad parts. Generates 4s clips with audio (audio will be stripped for product clips).' 
+                : '⚡ Fast generation, 5s clips, optimized for product videos.'}
             </div>
-          )}
-        </div>
-
-        {/* Shot presets */}
-        <div style={{ marginBottom: 16 }}>
-          <label
-            style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 'bold',
-              marginBottom: 6
-            }}
-          >
-            Shot Presets
-          </label>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 8
-            }}
-          >
-            {SHOT_PRESETS.map(preset => {
-              const checked = selectedShotIds.includes(preset.id)
-              return (
-                <label
-                  key={preset.id}
-                  style={{
-                    border: checked ? '1px solid #007bff' : '1px solid #ddd',
-                    borderRadius: 6,
-                    padding: 8,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    background: checked ? '#e9f3ff' : '#fafafa'
-                  }}
-                >
-                  <div style={{ marginBottom: 4 }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleShot(preset.id)}
-                      style={{ marginRight: 6 }}
-                    />
-                    <strong>{preset.label}</strong>
-                  </div>
-                  <div style={{ color: '#666', fontSize: 11 }}>{preset.description}</div>
-                </label>
-              )
-            })}
           </div>
-        </div>
+        )}
+
+        {/* PRODUCT VIDEO TAB CONTENT */}
+        {activeTab === 'product' && (
+          <>
+            {/* Image selection */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  marginBottom: 6
+                }}
+              >
+                Product Image
+              </label>
+              <button
+                onClick={handleSelectImages}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  borderRadius: 4,
+                  border: '1px solid #ccc',
+                  cursor: 'pointer',
+                  background: '#f8f9fa'
+                }}
+                disabled={isSubmitting}
+              >
+                {selectedImages.length > 0 ? 'Change Image…' : 'Select Image…'}
+              </button>
+              {selectedImages.length > 0 && (
+                <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                  📁 {selectedImages[0].split('\\').pop()?.split('/').pop()}
+                </div>
+              )}
+            </div>
+
+            {/* Shot presets */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  marginBottom: 6
+                }}
+              >
+                Shot Presets
+              </label>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: 8
+                }}
+              >
+                {SHOT_PRESETS.map(preset => {
+                  const checked = selectedShotIds.includes(preset.id)
+                  return (
+                    <label
+                      key={preset.id}
+                      style={{
+                        border: checked ? '1px solid #007bff' : '1px solid #ddd',
+                        borderRadius: 6,
+                        padding: 8,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        background: checked ? '#e9f3ff' : '#fafafa'
+                      }}
+                    >
+                      <div style={{ marginBottom: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleShot(preset.id)}
+                          style={{ marginRight: 6 }}
+                        />
+                        <strong>{preset.label}</strong>
+                      </div>
+                      <div style={{ color: '#666', fontSize: 11 }}>{preset.description}</div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* LOGO ANIMATION TAB CONTENT */}
+        {activeTab === 'logo' && (
+          <>
+            {/* Logo image selection */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  marginBottom: 6
+                }}
+              >
+                Logo Image (PNG, JPG, WebP, AVIF, SVG, etc.)
+              </label>
+              <button
+                onClick={handleSelectLogos}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  borderRadius: 4,
+                  border: '1px solid #ccc',
+                  cursor: 'pointer',
+                  background: '#f8f9fa'
+                }}
+                disabled={isSubmitting}
+              >
+                {selectedLogos.length > 0 ? 'Change Logo…' : 'Select Logo…'}
+              </button>
+              {selectedLogos.length > 0 && !conversionInfo && (
+                <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                  📁 {selectedLogos[0].split('\\').pop()?.split('/').pop()}
+                </div>
+              )}
+              
+              {/* Conversion prompt */}
+              {conversionInfo && conversionInfo.needsConversion && (
+                <div style={{
+                  marginTop: 12,
+                  padding: 12,
+                  background: '#fff3cd',
+                  border: '1px solid #ffecb5',
+                  borderRadius: 6
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 8, color: '#856404' }}>
+                    🔄 Format Conversion Required
+                  </div>
+                  <div style={{ fontSize: 12, color: '#856404', marginBottom: 10 }}>
+                    The following {conversionInfo.files.length} file(s) need to be converted to PNG for AI video generation:
+                  </div>
+                  <ul style={{ fontSize: 11, color: '#856404', marginLeft: 20, marginBottom: 10 }}>
+                    {conversionInfo.files.map((file, idx) => (
+                      <li key={idx}>
+                        <strong>{file.fileName}</strong> ({file.extension.toUpperCase()})
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ fontSize: 11, color: '#666', marginBottom: 10, fontStyle: 'italic' }}>
+                    SVG files will be rasterized at 2000px width. Converted files will be saved in the same directory with "_converted.png" suffix.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={handleConvertImages}
+                      disabled={isConverting}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        borderRadius: 4,
+                        border: 'none',
+                        cursor: isConverting ? 'not-allowed' : 'pointer',
+                        background: isConverting ? '#ccc' : '#28a745',
+                        color: 'white',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {isConverting ? '⏳ Converting...' : '✓ Convert to PNG'}
+                    </button>
+                    <button
+                      onClick={handleCancelConversion}
+                      disabled={isConverting}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        cursor: isConverting ? 'not-allowed' : 'pointer',
+                        background: '#f8f9fa',
+                        color: '#333'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Animation presets */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  marginBottom: 6
+                }}
+              >
+                Animation Styles
+              </label>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: 8
+                }}
+              >
+                {LOGO_ANIMATION_PRESETS.map(preset => {
+                  const checked = selectedLogoAnimations.includes(preset.id)
+                  return (
+                    <label
+                      key={preset.id}
+                      style={{
+                        border: checked ? '1px solid #007bff' : '1px solid #ddd',
+                        borderRadius: 6,
+                        padding: 8,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        background: checked ? '#e9f3ff' : '#fafafa'
+                      }}
+                    >
+                      <div style={{ marginBottom: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleLogoAnimation(preset.id)}
+                          style={{ marginRight: 6 }}
+                        />
+                        <strong>{preset.label}</strong>
+                      </div>
+                      <div style={{ color: '#666', fontSize: 11 }}>{preset.description}</div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Existing jobs summary */}
         <div

@@ -15,7 +15,7 @@ export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
     useRef<HTMLVideoElement>(null)
   ]
   const containerRef = useRef<HTMLDivElement>(null)
-  const { playhead, setPlayhead, selectedId, getClipById, pipSettings, setPipSettings } = useStore()
+  const { playhead, setPlayhead, selectedId, select, getClipById, pipSettings, setPipSettings } = useStore()
   const [error, setError] = useState<string | null>(null)
   const [showControls, setShowControls] = useState(false)
   const [isDragging, setIsDragging] = useState<number | null>(null) // Track which overlay is being dragged
@@ -24,14 +24,26 @@ export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
   const mainTrack = useStore.getState().getMainTrack()
   const overlayTracks = useStore.getState().getOverlayTracks()
   
-  // Get first clip from each track (simplified for now - no multi-clip sequence yet)
-  const mainClip = mainTrack.clips.length > 0 ? mainTrack.clips[0] : null
+  // Determine which clip is selected
+  const selectedClip = selectedId ? getClipById(selectedId) : null
+  
+  // If a clip is selected on main track, show that. Otherwise show first clip.
+  let mainClip = null
+  let currentClipIndex = 0
+  
+  if (selectedClip && selectedClip.trackId === 'main') {
+    // Selected clip is on main track
+    mainClip = selectedClip
+    currentClipIndex = mainTrack.clips.findIndex(c => c.id === selectedClip.id)
+  } else {
+    // No selection or selected clip is overlay - show first main clip
+    mainClip = mainTrack.clips.length > 0 ? mainTrack.clips[0] : null
+    currentClipIndex = 0
+  }
+  
   const overlayClips = overlayTracks.map(track => 
     track.clips.length > 0 ? track.clips[0] : null
   )
-  
-  // Determine which clip is selected for highlighting
-  const selectedClip = selectedId ? getClipById(selectedId) : null
   
   // Check if any overlay has clips
   const hasOverlays = overlayClips.some(clip => clip !== null)
@@ -75,6 +87,10 @@ export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
     
     const onLoadedMetadata = () => {
       v.currentTime = mainClip.start
+      // Resume playback if we were playing
+      if (isPlaying) {
+        v.play().catch(err => console.error('Auto-play failed:', err))
+      }
     }
     
     v.addEventListener('loadedmetadata', onLoadedMetadata)
@@ -83,7 +99,7 @@ export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
       // Cleanup on unmount or clip change
       v.pause()
     }
-  }, [mainClip?.path, mainClip?.id])
+  }, [mainClip?.path, mainClip?.id, isPlaying])
 
   // Update video currentTime when trim points change
   const prevTrimRef = React.useRef({ start: mainClip?.start, end: mainClip?.end })
@@ -191,14 +207,31 @@ export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
         const clipProgress = Math.max(0, localTime - mainClip.start)
         setPlayhead(clipProgress)
 
-        // Stop at trim end point
-        if (localTime >= mainClip.end) {
-          mainV.pause()
-          overlayVideoRefs.forEach(ref => ref.current?.pause())
-          mainV.currentTime = mainClip.end
-          overlayClips.forEach((clip, index) => {
-            if (clip) overlayVideoRefs[index].current!.currentTime = mainClip.end
-          })
+        // Check if we've reached the end of current clip
+        if (localTime >= mainClip.end - 0.1) { // Buffer to catch the end
+          // Get fresh state
+          const freshMainTrack = useStore.getState().getMainTrack()
+          const freshCurrentIndex = freshMainTrack.clips.findIndex(c => c.id === mainClip.id)
+          const nextIndex = freshCurrentIndex + 1
+          const nextClip = freshMainTrack.clips[nextIndex]
+          
+          console.log(`Clip ended. Current: ${mainClip.name}, Next index: ${nextIndex}, Has next: ${!!nextClip}`)
+          
+          if (nextClip) {
+            // There's a next clip - switch to it
+            console.log('Auto-advancing to next clip:', nextClip.name)
+            mainV.pause() // Pause current video first
+            select(nextClip.id)
+            setPlayhead(0) // Reset playhead for next clip
+            // The useEffect will reload the video and resume playback
+          } else {
+            // No more clips - stop playback
+            console.log('Reached end of timeline - stopping')
+            mainV.pause()
+            overlayVideoRefs.forEach(ref => ref.current?.pause())
+            setIsPlaying(false)
+            mainV.currentTime = mainClip.end
+          }
         }
       }
     }
@@ -232,7 +265,7 @@ export default function Player({ isPlaying, setIsPlaying }: PlayerProps) {
       mainV.removeEventListener('play', onPlay)
       mainV.removeEventListener('pause', onPause)
     }
-  }, [mainClip, ...overlayClips])
+  }, [mainClip?.id, currentClipIndex, isPlaying, overlayClips.map(c => c?.id).join(',')])
 
   if (!mainClip) {
     return (

@@ -58,10 +58,13 @@ export interface VideoAssetJob {
   productId?: string | null
   sourceImages: string[]
   shotPresetIds: string[]
+  logoAnimationIds?: string[]
+  logoPaths?: string[]
   status: VideoAssetJobStatus
   createdAt: string
   updatedAt: string
   resultAssets: VideoAssetShotResult[]
   error?: string | null
+  model?: 'runway' | 'veo'
 }
 
