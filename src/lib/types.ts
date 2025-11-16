@@ -38,3 +38,30 @@ export type PipSettings = {
   customY?: number // Custom Y position (0-1)
 }
 
+// Phase 10: 3D Product Video Asset Packs
+export type VideoAssetJobType = 'ai_video_pack' | '3d_render_pack'
+
+export type VideoAssetJobStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface VideoAssetShotResult {
+  shotId: string
+  provider: string
+  url: string
+  durationSec: number
+  width?: number
+  height?: number
+}
+
+export interface VideoAssetJob {
+  id: string
+  type: VideoAssetJobType
+  productId?: string | null
+  sourceImages: string[]
+  shotPresetIds: string[]
+  status: VideoAssetJobStatus
+  createdAt: string
+  updatedAt: string
+  resultAssets: VideoAssetShotResult[]
+  error?: string | null
+}
+

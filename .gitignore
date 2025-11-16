@@ -12,3 +12,16 @@ Thumbs.db
 *.tmp
 /_release
 
+# Local USD source tree (embedded repo, large)
+/USD
+
+# Local assets, renders, and working data (S3 mirrors / machine-specific)
+/clappper-assets
+/renders
+/scripts/__pycache__
+/shots/*.json
+/master_index.json
+
+# Secrets / keys
+*.pem
+

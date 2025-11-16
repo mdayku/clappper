@@ -487,7 +487,7 @@ ipcMain.handle('dialog:openFiles', async () => {
 
 ipcMain.handle('dialog:openImageFiles', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'Images', extensions: ['png', 'jpg', 'jpeg'] },
       { name: 'All Files', extensions: ['*'] }
@@ -2097,6 +2097,109 @@ ipcMain.handle('settings:getUsageStats', async () => {
     rate_limit: rateLimit
   }
 })
+
+// ================== VIDEO ASSET JOBS (PHASE 10) ==================
+
+type VideoAssetJobType = 'ai_video_pack' | '3d_render_pack'
+
+type VideoAssetShotResult = {
+  shotId: string
+  provider: string
+  url: string
+  durationSec: number
+  width?: number
+  height?: number
+}
+
+type VideoAssetJob = {
+  id: string
+  type: VideoAssetJobType
+  productId?: string | null
+  sourceImages: string[]
+  shotPresetIds: string[]
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  createdAt: string
+  updatedAt: string
+  resultAssets: VideoAssetShotResult[]
+  error?: string | null
+}
+
+const getVideoAssetsConfig = async (): Promise<{ jobs: VideoAssetJob[] }> => {
+  const config = await loadConfig()
+  if (!config.video_asset_jobs) {
+    config.video_asset_jobs = []
+  }
+  return { jobs: config.video_asset_jobs as VideoAssetJob[] }
+}
+
+const saveVideoAssetsConfig = async (jobs: VideoAssetJob[]) => {
+  const config = await loadConfig()
+  config.video_asset_jobs = jobs
+  await saveConfig(config)
+}
+
+// Create a new video asset job (stub provider for now)
+ipcMain.handle(
+  'videoAssets:createJob',
+  async (
+    _e: any,
+    payload: {
+      type: VideoAssetJobType
+      shotPresetIds: string[]
+      imagePaths: string[]
+      productId?: string | null
+    }
+  ) => {
+    const { type, shotPresetIds, imagePaths, productId = null } = payload
+
+    if (!imagePaths || imagePaths.length === 0) {
+      throw new Error('At least one source image is required to create video assets')
+    }
+    if (!shotPresetIds || shotPresetIds.length === 0) {
+      throw new Error('At least one shot preset must be selected')
+    }
+
+    const { jobs } = await getVideoAssetsConfig()
+
+    const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const now = new Date().toISOString()
+
+    // For now, create a mock "completed" job with placeholder URLs.
+    // Later this will fan out to real providers (Replicate/OpenAI/AWS or Blender workers).
+    const resultAssets: VideoAssetShotResult[] = shotPresetIds.map((shotId) => ({
+      shotId,
+      provider: type === 'ai_video_pack' ? 'mock-ai-provider' : 'mock-3d-renderer',
+      url: `file://mock/${id}/${shotId}.mp4`,
+      durationSec: 3
+    }))
+
+    const job: VideoAssetJob = {
+      id,
+      type,
+      productId,
+      sourceImages: imagePaths,
+      shotPresetIds,
+      status: 'completed', // stubbed as completed for now
+      createdAt: now,
+      updatedAt: now,
+      resultAssets,
+      error: null
+    }
+
+    const nextJobs = [...jobs, job]
+    await saveVideoAssetsConfig(nextJobs)
+
+    return job
+  }
+)
+
+// List all video asset jobs
+ipcMain.handle('videoAssets:listJobs', async () => {
+  const { jobs } = await getVideoAssetsConfig()
+  // Sort newest first
+  return jobs.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+})
+
 
 // Find contractors by opening Google search
 ipcMain.handle('contractors:find', async (_e: any, zipCode: string, category: string) => {

@@ -10,16 +10,61 @@
 
 These are the **live, high-priority tasks** for the Omniverse + Cosmos work. Treat this section as the day-to-day checklist.
 
-**Completed so far:** Phase 0 (Pre-Flight), Phase 1 (EC2 host + SSH), Phase 2 (GPU drivers, CUDA, Docker + NVIDIA toolkit).
+**Completed so far:**  
+- Phase 0 (Pre-Flight).  
+- Phase 1 (EC2 host + SSH).  
+- Phase 2 (GPU drivers, CUDA, Docker + NVIDIA toolkit).  
+- Windows `g5.xlarge` Omniverse authoring instance with:
+  - RDP access and NVIDIA driver installed.
+  - `kit-app-template`-based Kit app (`mdayku`) with Movie Capture extensions.
+  - S3-backed asset library bucket (`clappper-assets`) mounted via rclone as Z: drive.
+  - **Asset catalog complete**: 3,092 unique USD assets across 14 packs with metadata and tags.
+  - Video compilation workflow: PNG sequences → MP4 via FFmpeg.
+  - Hero scenes created with 240-frame sequence captures compiled to video.
 
-**Parallel track (UI):** A separate Windows `g5.xlarge` instance with GPU drivers and Omniverse Launcher will be used as an **interactive authoring workstation** (RDP + GUI), while the Ubuntu instance remains the **headless render + Cosmos pipeline** engine.
+**Parallel track (UI):** A separate Windows `g5.xlarge` instance with GPU drivers and Omniverse tools is used as an **interactive authoring + capture workstation** (RDP + GUI), while the Ubuntu instance remains the **headless render + Cosmos pipeline** engine.
 
-### Current Stage – Phase 3: Omniverse (Headless via Container)
+### Current Stage – Phase 3: Omniverse
 
-- [x] **3.1 Base packages & workspace**
+There are now **two complementary options** for Omniverse capture. Both can coexist; Option A is active today, Option B remains a stretch goal.
+
+#### Option A – Windows Kit App (Authoring + Capture) **← current path**
+
+- [x] **3A.1 Windows Omniverse authoring instance**
+  - [x] Launch Windows `g5.xlarge` instance and enable RDP.
+  - [x] Install NVIDIA data center driver and verify `nvidia-smi` in PowerShell.
+- [x] **3A.2 Kit app via `kit-app-template`**
+  - [x] Clone `kit-app-template` onto the Windows instance.
+  - [x] Create and launch a minimal Kit app (`mdayku`) via `repo.bat template new` → `repo.bat build` → `repo.bat launch`.
+- [x] **3A.3 S3 asset sync**
+  - [x] Install AWS CLI on the Windows instance and configure credentials.
+  - [x] Sync `s3://clappper-assets` to `C:\Users\Administrator\Documents\clappper-assets`.
+  - [x] Load Pixar USD examples and project assets from the synced folder.
+- [x] **3A.4 Scene library seed**
+  - [x] Promote at least one example scene to `scenes/` (e.g. `simple_shading_card.usd`).
+  - [x] Confirm the scene opens and renders correctly inside the Kit app.
+- [x] **3A.5 Manual still capture**
+  - [x] Configure viewport capture to write PNGs into `C:\Users\Administrator\Documents\renders`.
+  - [x] Capture at least one clean plate (no overlays) and sync `renders/` to `s3://clappper-assets/renders/`.
+- [x] **3A.6 Upgrade to video / sequence capture**
+  - [x] Enable capture-friendly extensions in the app's `.kit` file (`omni.kit.window.movie_capture`, `omni.kit.capture.viewport`) and rebuild.
+  - [x] Use the Movie/Capture UI to export image sequences (240-frame sequence captured).
+  - [x] Compile PNG sequences to MP4 using FFmpeg (`compile_sequence.py` script).
+- [x] **3A.7 Asset catalog generation**
+  - [x] Build comprehensive asset inventory with metadata, tags, and S3 paths.
+  - [x] Generate master index JSON for LLM querying (3,092 unique assets across 14 packs).
+  - [x] Sync catalog to S3: `s3://clappper-assets/omniverse_assets/asset_catalog/`.
+- [ ] **3A.8 LLM → USD script generation workflow**
+  - [ ] Test workflow: User describes scene → LLM queries catalog → checks asset availability → generates USD Python script.
+  - [ ] Run generated script in Kit to create scene automatically.
+  - [ ] Capture and compile video from generated scene.
+
+#### Option B – Ubuntu Headless Kit Container (Render Service) **← blocked / stretch**
+
+- [x] **3B.1 Base packages & workspace**
   - [x] Install dependencies: `wget`, `curl`, `git`, `python3`, `pip`, `ffmpeg`, X11 libs.
   - [x] Create working directories: `~/omniverse` and `~/clappper-render`.
-- [ ] **3.2 Omniverse Kit container**
+- [ ] **3B.2 Omniverse Kit container**
   - [ ] Create or sign in to an NGC account at `ngc.nvidia.com`.
   - [ ] Generate an NGC API key (`nvapi-...`) from **Setup → API Keys** in the NGC web UI.
   - [ ] Log in to `nvcr.io` with:
@@ -27,18 +72,63 @@ These are the **live, high-priority tasks** for the Omniverse + Cosmos work. Tre
     - Password: your NGC API key
   - [ ] Pull Omniverse Kit container: `nvcr.io/nvidia/omniverse-kit:latest`.
     - _Note: If you see **“error from registry: Access Denied”**, your NGC account is not entitled to this image and you must request access in the NGC catalog or use the non-container Omniverse setup path._
-- [ ] **3.3 Test scene & render script**
+- [ ] **3B.3 Test scene & render script**
   - [ ] Create `test.usda` and `render_kit.py` in `~/clappper-render`.
-- [ ] **3.4 Headless render validation**
+- [ ] **3B.4 Headless render validation**
   - [ ] Run test render via Docker as in this guide.
   - [ ] Confirm output frames show up in `~/clappper-render/output/`.
 
+#### Asset Library & ChatUSD (Shared Across Phases 3–5)
+
+> Detailed design lives in `ASSET_USD_PLAN`; this section summarizes how it fits into the AWS/S3 architecture.
+
+- [ ] **3C.1 Define canonical asset root (S3-first, EC2 as cache)**
+  - [ ] Use S3 as the **source of truth** for all USD assets to avoid running out of local disk on EC2:
+    - Canonical root: `s3://clappper-assets/omniverse_assets/`
+    - Windows authoring mount: `C:\Users\Administrator\Documents\omniverse_assets\` (synced from S3).
+    - Future Ubuntu/headless mount: `/mnt/omniverse_assets/` (synced from S3 when needed).
+  - [ ] Establish a minimal folder layout under the root:
+    - `packs/` – NVIDIA/Pixar/third-party asset packs (unzipped).
+    - `scenes/` – curated scenes and hero shots.
+    - `products/` – your own product USDs / placeholders.
+    - `scratch/` – temporary stages and experiment outputs.
+- [ ] **3C.2 NVIDIA + Pixar asset ingestion (S3-centric)**
+  - [ ] Download a **curated subset** of NVIDIA Omniverse/OpenUSD Asset Packs (environments, interiors, props) to a local working machine or the Windows instance.
+  - [ ] Unzip into a staging folder, then upload/sync into:
+    - `s3://clappper-assets/omniverse_assets/packs/{pack_name}/...`
+  - [ ] Normalize existing Pixar USD content so it lives under `packs/pixar/...` in the same S3 root.
+  - [ ] On the Windows instance, `aws s3 sync` only the packs/scenes you need onto local disk, and delete local copies after promotion to S3 when space gets tight (S3 remains the canonical store).
+- [ ] **3C.3 Hero scenes and products**
+  - [ ] Promote 3–5 high-quality scenes (from NVIDIA packs or Pixar examples) into `omniverse_assets/scenes/` with stable names (e.g. `interior_loft_v1.usd`, `bookshelf_v1.usd`).
+  - [ ] Create a `products/placeholder/` folder with simple stand-in product USDs (box-on-pedestal, etc.) to support early “product hero” shots.
+  - [ ] For each hero scene, capture at least one clean plate (no overlays) into `renders/` and sync to `s3://clappper-assets/renders/`.
+- [ ] **3C.4 Shot metadata catalog**
+  - [ ] Define a simple `shots/` JSON schema (stored in S3, e.g. `s3://clappper-assets/omniverse_assets/shots/{scene_id}.json`) that maps:
+    - `scene_id` → USD path under `omniverse_assets/scenes/`.
+    - Default camera name and framing info.
+    - One or more default PNG or sequence paths under `renders/`.
+    - Tags/notes (`["interior","loft","warm"]`, etc.).
+  - [ ] Create shot descriptors for each promoted hero scene; keep this catalog as the bridge between the web app / Cosmos planner and the Omniverse scenes.
+- [x] **3C.5 ChatUSD / LLM-based USD generation (alternative approach implemented)**
+  - **Status:** The `omni.ai.chat_usd.bundle` extension is not available in the Kit SDK registries (similar to Cosmos access issue).
+  - **Implemented alternative:** External LLM (Claude, GPT, etc.) generates USD Python scripts based on:
+    1. User's natural language scene description
+    2. Asset availability check against the S3 catalog
+    3. Iterative refinement until all required assets are confirmed available
+    4. Generated Python script that uses USD API to compose scene + configure capture
+  - [x] **Asset inventory complete**: 3,092 unique USD assets cataloged with metadata, tags, and S3 paths.
+  - [x] **Master index JSON** created at `s3://clappper-assets/omniverse_assets/asset_catalog/master_index.json`.
+  - [x] **Asset distribution**: Warehouse (2,340), Furniture (490), Residential (66), Commercial (32), Characters (28), plus environments, particles, demos.
+  - [ ] **Test LLM workflow**: Describe scene → LLM checks catalog → generates Python script → run in Kit → validate automated scene + render generation.
+
 ### Next Stage – Phase 4: Cosmos
+
+> **Status:** Blocked as of Nov 2025 – the NVIDIA account currently lacks sufficient permissions/entitlements for Cosmos (NVCF / NIM). These tasks stay on the roadmap but cannot be completed until access is granted.
 
 - [ ] **4.1 Local Python environment for Cosmos**
   - [ ] Ensure `python3` and `pip` are installed and working on EC2.
 - [ ] **4.2 Choose Cosmos path**
-  - [ ] Decide between hosted API, NIM container, or open-weights repo.
+  - [ ] Decide between hosted API, NIM container, or open-weights repo (subject to account access).
   - [ ] Implement one path end-to-end and produce a test video file.
 - [ ] **4.3 Validate Cosmos output**
   - [ ] Confirm a minimal request succeeds and outputs a playable video.

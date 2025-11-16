@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Clip, Track, PipPosition, PipSettings } from './lib/types'
+import { Clip, Track, PipSettings, VideoAssetJob } from './lib/types'
 
 export type ExportResolution = '360p' | '480p' | '720p' | '1080p' | 'source'
 export type ExportPreset = 'fast' | 'medium' | 'slow'
@@ -70,6 +70,10 @@ interface State {
   getClipById: (id: string) => Clip | undefined
   getAllClips: () => Clip[]
   getTotalDuration: () => number
+
+  // Phase 10: video asset jobs (renderer-side cache for UI)
+  videoAssetJobs: VideoAssetJob[]
+  setVideoAssetJobs: (jobs: VideoAssetJob[]) => void
 }
 
 // Helper to keep clips sorted by order
@@ -215,6 +219,10 @@ export const useStore = create<State>((set, get) => ({
   getMainTrack: () => get().tracks.find(t => t.type === 'video')!,
   getOverlayTrack: () => get().tracks.find(t => t.type === 'overlay')!, // Returns first overlay for backward compatibility
   getOverlayTracks: () => get().tracks.filter(t => t.type === 'overlay'),
+
+  // Phase 10: video asset jobs cache
+  videoAssetJobs: [],
+  setVideoAssetJobs: (jobs) => set({ videoAssetJobs: jobs }),
   
   // Clip operations
   setClips: (c) => {

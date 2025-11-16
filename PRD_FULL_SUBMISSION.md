@@ -783,6 +783,130 @@ window.clappper.onEnhanceProgress((data: {
 
 ---
 
+### Phase 10: 3D Product Video Asset Packs (New Feature Track)
+
+> Goal: Given a set of product photos, generate a **pack of 5–10 reusable “stock” video clips** (slow pans, zooms, 360° orbits, etc.) suitable for real advertisements.
+
+#### 10.1 User Experience
+
+- Add a **“Create Video Assets”** button on the product page.
+- Clicking opens a modal:
+  - Image uploader (1–10 product photos).
+  - Options:
+    - **3D Render Pack (High Quality)** – uses 3D reconstruction + offline renderer (Blender).
+    - **AI Video Pack (Hosted Models)** – uses hosted image→video APIs (Replicate / OpenAI / AWS) with predefined camera motions.
+  - Shot preset checkboxes:
+    - `slow_pan_left_to_right`, `slow_pan_right_to_left`, `slow_dolly_in`, `slow_dolly_out`, `orbit_360`, `hero_front`, `top_down`, `detail_macro`, etc.
+
+#### 10.2 Backend Data Model
+
+- New `video_asset_job` entity:
+  - `id`
+  - `product_id`
+  - `type`: `"3d_render_pack"` \| `"ai_video_pack"`.
+  - `source_images`: S3 URLs for uploaded photos.
+  - `status`: `"pending" | "running" | "completed" | "failed"`.
+  - `shots`: array of shot templates (IDs + parameters).
+  - `result_assets`: array of `{ shotId, provider, url, duration, width, height }`.
+  - `error`: nullable.
+- API surface:
+  - `POST /api/video-assets` – create job (images + type + shotPresetIds).
+  - `GET /api/video-assets/:id` – poll job status / list results.
+  - `GET /api/video-assets?productId=...` – list jobs per product.
+
+#### 10.3 Shot Template Representation
+
+Shot templates are **data, not code**, so they can be reused across renderers (Blender, three.js, hosted AI models):
+
+```json
+{
+  "shot_id": "orbit_360",
+  "duration_sec": 3,
+  "fps": 30,
+  "camera_path": "circle",
+  "radius_m": 3,
+  "height_m": 1.5,
+  "start_angle_deg": 0,
+  "end_angle_deg": 360,
+  "ease": "smooth"
+}
+```
+
+For each job we attach a fixed set of templates so that **all required clips can be generated in one batch**.
+
+#### 10.4 Pipeline B – AI Video Pack (Hosted Models)
+
+This pipeline produces “pseudo‑3D” filler shots directly from images using hosted image→video APIs. It avoids hosting heavy models inside Clappper.
+
+- **Providers**:
+  - **Replicate** – e.g. Pika / SVD / Gen‑2‑style models.
+  - **OpenAI** – future image→video API (same adapter pattern).
+  - **AWS Bedrock** – when a suitable model is available.
+- **Job orchestration**:
+  - For each `video_asset_job` of type `"ai_video_pack"`:
+    - Construct **one prompt per shot template** combining:
+      - Product name + category.
+      - Shot intent (e.g. “slow 3-second left‑to‑right pan over product on neutral studio background”).
+      - Style tags (“high-end product photography, soft 3-point lighting, 4K, no text, no people”).
+    - Either:
+      - **Queue N independent API calls in parallel** (one per shot), or
+      - Use providers that support **batch generation** (multiple prompts/variations in one call) to reduce latency and cost.
+  - Each shot is tracked individually: `shot.status = pending/running/completed/failed`.
+  - When all shots resolve (or time out), the parent job transitions to `completed` or `failed`.
+
+**Key requirement:** the job orchestrator should be able to:
+- **Fire all shots at once** (fan‑out) so the full pack is generated in a single user action.
+- **Fan‑in results** into a single job record so the UI can show one “Video Assets Ready” state.
+
+#### 10.5 Pipeline A – 3D Render Pack (High Quality, Future)
+
+- **Input**: product photos.
+- **Step 1 – 3D reconstruction**:
+  - Call Trellis or a hosted 3D reconstruction model on Replicate to obtain a `glb` mesh for the product.
+- **Step 2 – Offline rendering with Blender (headless)**:
+  - Maintain a small library of Blender studio templates (lights, floor, background).
+  - A Python script imports the `glb`, auto-centers/scales it, and renders each shot template (same JSON as above) into PNG sequences / MP4s.
+- **Output**: 5–10 high-quality clips per product that can sit comfortably in a real furniture ad.
+
+**Initial implementation focus**: 
+- Wire up **job model + API + UI** and a **hosted AI provider stub** for Pipeline B, then iterate toward a full Blender-based renderer for highest quality.
+
+---
+
+### Phase 10 – Current Status (Local Clappper App)
+
+**What’s implemented now:**
+- PRD updated with full Phase 10 design (this section).
+- Electron main process:
+  - `video_asset_jobs` persisted in `config.json`.
+  - IPC handlers: `videoAssets:createJob`, `videoAssets:listJobs` (currently return mock “completed” jobs with placeholder URLs).
+  - `dialog:openImageFiles` supports multi-image selection.
+- Preload bridge (`window.clappper`):
+  - `createVideoAssetsJob({ type, shotPresetIds, imagePaths })`.
+  - `listVideoAssetsJobs()`.
+- Renderer:
+  - Zustand store tracks `videoAssetJobs` and exposes `setVideoAssetJobs`.
+  - Toolbar has **“Create Video Assets”** button.
+  - `VideoAssetsModal` lets you:
+    - Choose pipeline type (`ai_video_pack` vs `3d_render_pack`).
+    - Select 1–N product images (currently PNG/JPG/JPEG).
+    - Select a set of shot presets (pan/zoom/orbit/etc.).
+    - Create a job and see a “Recent Video Asset Jobs” list (mock results).
+
+**Planned next steps (for the next session):**
+- Replace the mock provider inside `videoAssets:createJob` with real fan‑out to one hosted AI provider (likely Replicate first):
+  - One call per shot template or batched if supported.
+  - Track per‑shot status and update `job.status` from `pending → running → completed/failed`.
+  - Write real MP4s to S3 and store their URLs in `resultAssets`.
+- Align Clappper’s local `video_asset_job` structure with the web app schema:
+  - Add `companyId` and `productId` fields and mirror the `/ad/{adId}/clip/{clipId}` hierarchy (`/videoAssetJob/{jobId}/clip/{clipId}`).
+- Expand image ingest support:
+  - Accept AVIF and other formats, normalizing everything to PNG/JPEG on ingest using ffmpeg or an image library.
+
+Use this section as the handoff summary when continuing Phase 10 work in a new chat or by a new agent.
+
+---
+
 ### Phase 9: Advanced Features & Polish (Priority: Low, Post-Demo)
 **Goal**: Additional features deferred from earlier phases
 

@@ -67,5 +67,8 @@ contextBridge.exposeInMainWorld('clappper', {
     setOpenAIKey: (apiKey) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey),
     getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats'),
     // Contractor Search
-    findContractors: (zipCode, category) => ipcRenderer.invoke('contractors:find', zipCode, category)
+    findContractors: (zipCode, category) => ipcRenderer.invoke('contractors:find', zipCode, category),
+    // Video asset jobs (Phase 10)
+    createVideoAssetsJob: (payload) => ipcRenderer.invoke('videoAssets:createJob', payload),
+    listVideoAssetsJobs: () => ipcRenderer.invoke('videoAssets:listJobs')
 });

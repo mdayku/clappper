@@ -5,6 +5,7 @@ import EnhanceModal from './EnhanceModal'
 import ImageFilter from './ImageFilter'
 import RoomDetection from './RoomDetection'
 import DamageDetector from './DamageDetector'
+import VideoAssetsModal from './VideoAssetsModal'
 
 export default function Toolbar() {
   const [progress, setProgress] = useState(0)
@@ -23,6 +24,7 @@ export default function Toolbar() {
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [stopRecordingFn, setStopRecordingFn] = useState<(() => void) | null>(null)
+  const [showVideoAssetsModal, setShowVideoAssetsModal] = useState(false)
 
   React.useEffect(() => {
     if (window.clappper) {
@@ -454,6 +456,24 @@ export default function Toolbar() {
   const setVisibleOverlayCount = useStore(s => s.setVisibleOverlayCount)
   const exportSettings = useStore(s => s.exportSettings)
   const setExportSettings = useStore(s => s.setExportSettings)
+  const videoAssetJobs = useStore(s => s.videoAssetJobs)
+  const setVideoAssetJobs = useStore(s => s.setVideoAssetJobs)
+
+  // Load video asset jobs on mount (simple cache; jobs are stored in config.json via IPC)
+  React.useEffect(() => {
+    const loadJobs = async () => {
+      try {
+        const jobs = await window.clappper.listVideoAssetsJobs()
+        setVideoAssetJobs(jobs)
+      } catch (err) {
+        console.error('Failed to load video asset jobs:', err)
+      }
+    }
+    // Only run if IPC is available
+    if ((window as any).clappper?.listVideoAssetsJobs) {
+      loadJobs()
+    }
+  }, [setVideoAssetJobs])
 
   return (
     <div style={{ display:'flex', flexDirection: 'column', borderBottom: '1px solid #eee' }}>
@@ -488,6 +508,9 @@ export default function Toolbar() {
         </button>
         <button onClick={() => setShowDamageDetection(true)} disabled={isExporting || isImporting}>
           Detect Damage
+        </button>
+        <button onClick={() => setShowVideoAssetsModal(true)} disabled={isExporting || isImporting}>
+          Create Video Assets
         </button>
         <button 
           onClick={clearAll} 
@@ -785,6 +808,12 @@ export default function Toolbar() {
       <DamageDetector
         isOpen={showDamageDetection}
         onClose={() => setShowDamageDetection(false)}
+      />
+      
+      {/* Video Assets Modal (Phase 10) */}
+      <VideoAssetsModal
+        isOpen={showVideoAssetsModal}
+        onClose={() => setShowVideoAssetsModal(false)}
       />
     </div>
   )

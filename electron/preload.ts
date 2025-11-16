@@ -85,6 +85,14 @@ contextBridge.exposeInMainWorld('clappper', {
   getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats'),
   
   // Contractor Search
-  findContractors: (zipCode: string, category: string) => ipcRenderer.invoke('contractors:find', zipCode, category)
+  findContractors: (zipCode: string, category: string) => ipcRenderer.invoke('contractors:find', zipCode, category),
+
+  // Video asset jobs (Phase 10)
+  createVideoAssetsJob: (payload: {
+    type: 'ai_video_pack' | '3d_render_pack'
+    shotPresetIds: string[]
+    imagePaths: string[]
+  }) => ipcRenderer.invoke('videoAssets:createJob', payload),
+  listVideoAssetsJobs: () => ipcRenderer.invoke('videoAssets:listJobs')
 })
 
