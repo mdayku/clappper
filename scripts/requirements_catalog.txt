@@ -1,0 +1,12 @@
+# Requirements for Asset Catalog Generator with Visual Embeddings
+
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+Pillow>=9.5.0
+numpy>=1.24.0
+
+# Optional: For faster inference
+# accelerate>=0.20.0
+

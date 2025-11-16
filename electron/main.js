@@ -1,8 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 const { app, BrowserWindow, ipcMain, dialog, protocol, Menu, desktopCapturer } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const ffmpeg = require('fluent-ffmpeg');
+// Video asset generation imports (will be required after compilation)
+// Note: These are TypeScript files that will be compiled to JS
+const replicate_client_1 = require("./replicate-client");
+const video_asset_prompts_1 = require("./video-asset-prompts");
 // Suppress Chromium's verbose WGC (Windows Graphics Capture) errors
 // These are harmless warnings from the screen capture API
 app.commandLine.appendSwitch('disable-logging');
@@ -419,9 +425,9 @@ const createWindow = async () => {
             label: 'Settings',
             submenu: [
                 {
-                    label: 'Change OpenAI API Key...',
+                    label: 'API Key Manager',
                     click: () => {
-                        // Send event to renderer to show API key dialog
+                        // Send event to renderer to show API key manager
                         win?.webContents.send('menu:change-api-key');
                     }
                 }
@@ -1829,14 +1835,47 @@ const incrementUsageStats = async (tokensUsed) => {
     config.usage_stats.last_call = new Date().toISOString();
     await saveConfig(config);
 };
-// Settings IPC handlers
+// Settings IPC handlers - Multi-Provider Key Manager
+ipcMain.handle('settings:getApiKeys', async () => {
+    const config = await loadConfig();
+    // Migrate old openai_api_key if it exists
+    if (config.openai_api_key && !config.api_keys?.openai) {
+        if (!config.api_keys)
+            config.api_keys = {};
+        config.api_keys.openai = config.openai_api_key;
+        delete config.openai_api_key;
+        await saveConfig(config);
+    }
+    return config.api_keys || {};
+});
+ipcMain.handle('settings:setApiKey', async (_e, payload) => {
+    const config = await loadConfig();
+    if (!config.api_keys)
+        config.api_keys = {};
+    config.api_keys[payload.provider] = payload.key;
+    await saveConfig(config);
+    return { success: true };
+});
+ipcMain.handle('settings:removeApiKey', async (_e, provider) => {
+    const config = await loadConfig();
+    if (config.api_keys && config.api_keys[provider]) {
+        delete config.api_keys[provider];
+        await saveConfig(config);
+    }
+    return { success: true };
+});
+// Legacy handler for backward compatibility
 ipcMain.handle('settings:getOpenAIKey', async () => {
     const config = await loadConfig();
-    return config.openai_api_key || null;
+    if (config.openai_api_key)
+        return config.openai_api_key;
+    return config.api_keys?.openai || null;
 });
 ipcMain.handle('settings:setOpenAIKey', async (_e, apiKey) => {
     const config = await loadConfig();
-    config.openai_api_key = apiKey;
+    if (!config.api_keys)
+        config.api_keys = {};
+    config.api_keys.openai = apiKey;
     await saveConfig(config);
     return { success: true };
 });
@@ -1867,7 +1906,7 @@ const saveVideoAssetsConfig = async (jobs) => {
     config.video_asset_jobs = jobs;
     await saveConfig(config);
 };
-// Create a new video asset job (stub provider for now)
+// Create a new video asset job with real API integration
 ipcMain.handle('videoAssets:createJob', async (_e, payload) => {
     const { type, shotPresetIds, imagePaths, productId = null } = payload;
     if (!imagePaths || imagePaths.length === 0) {
@@ -1879,30 +1918,121 @@ ipcMain.handle('videoAssets:createJob', async (_e, payload) => {
     const { jobs } = await getVideoAssetsConfig();
     const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
-    // For now, create a mock "completed" job with placeholder URLs.
-    // Later this will fan out to real providers (Replicate/OpenAI/AWS or Blender workers).
-    const resultAssets = shotPresetIds.map((shotId) => ({
-        shotId,
-        provider: type === 'ai_video_pack' ? 'mock-ai-provider' : 'mock-3d-renderer',
-        url: `file://mock/${id}/${shotId}.mp4`,
-        durationSec: 3
-    }));
+    // Create job in "pending" state
     const job = {
         id,
         type,
         productId,
         sourceImages: imagePaths,
         shotPresetIds,
-        status: 'completed', // stubbed as completed for now
+        status: 'pending',
         createdAt: now,
         updatedAt: now,
-        resultAssets,
+        resultAssets: [],
         error: null
     };
     const nextJobs = [...jobs, job];
     await saveVideoAssetsConfig(nextJobs);
+    // Process shots in background (don't await)
+    processVideoAssetJob(id, type, shotPresetIds, imagePaths).catch(err => {
+        console.error(`[VIDEO ASSETS] Job ${id} failed:`, err);
+    });
     return job;
 });
+// Background processor for video asset jobs
+async function processVideoAssetJob(jobId, type, shotPresetIds, imagePaths) {
+    console.log(`[VIDEO ASSETS] Starting job ${jobId} with ${shotPresetIds.length} shots`);
+    try {
+        // Update status to "running"
+        await updateVideoAssetJobStatus(jobId, 'running', null);
+        if (type === 'ai_video_pack') {
+            await processAIVideoPack(jobId, shotPresetIds, imagePaths);
+        }
+        else if (type === '3d_render_pack') {
+            // 3D rendering not implemented yet
+            throw new Error('3D render pack not yet implemented. Please use AI video pack.');
+        }
+        else {
+            throw new Error(`Unknown job type: ${type}`);
+        }
+        // Update status to "completed"
+        await updateVideoAssetJobStatus(jobId, 'completed', null);
+        console.log(`[VIDEO ASSETS] Job ${jobId} completed successfully`);
+    }
+    catch (err) {
+        console.error(`[VIDEO ASSETS] Job ${jobId} failed:`, err);
+        await updateVideoAssetJobStatus(jobId, 'failed', err.message || 'Unknown error');
+    }
+}
+// Process AI video pack using Replicate
+async function processAIVideoPack(jobId, shotPresetIds, imagePaths) {
+    const config = await loadConfig();
+    const replicateApiKey = config.api_keys?.replicate;
+    if (!replicateApiKey) {
+        throw new Error('Replicate API key not configured. Please set your API key in Settings → API Keys.');
+    }
+    const client = new replicate_client_1.ReplicateClient({ apiToken: replicateApiKey });
+    const outputDir = path.join((0, replicate_client_1.getVideoAssetsDir)(), jobId);
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
+    const resultAssets = [];
+    // Use first image for all shots (could be extended to use different images per shot)
+    const primaryImage = imagePaths[0];
+    // Process all shots in parallel (fan-out)
+    const shotPromises = shotPresetIds.map(async (shotId) => {
+        console.log(`[VIDEO ASSETS] Generating shot: ${shotId}`);
+        const template = (0, video_asset_prompts_1.getShotTemplate)(shotId);
+        if (!template) {
+            throw new Error(`Unknown shot preset: ${shotId}`);
+        }
+        // Build prompt with generic product description
+        const prompt = (0, video_asset_prompts_1.buildShotPrompt)(shotId, 'the product on display');
+        try {
+            // Generate 5-second video with 16:9 aspect ratio (default for product videos)
+            const videoPath = await client.generateVideo(primaryImage, prompt, outputDir, (status) => {
+                console.log(`[VIDEO ASSETS] Shot ${shotId}: ${status}`);
+            }, 5, // duration in seconds (5 or 10)
+            '16:9' // aspect ratio for landscape product videos
+            );
+            console.log(`[VIDEO ASSETS] Shot ${shotId} completed: ${videoPath}`);
+            return {
+                shotId,
+                provider: 'replicate',
+                url: `file://${videoPath}`,
+                durationSec: template.duration
+            };
+        }
+        catch (err) {
+            console.error(`[VIDEO ASSETS] Shot ${shotId} failed:`, err);
+            throw new Error(`Shot ${shotId} failed: ${err.message}`);
+        }
+    });
+    // Wait for all shots to complete
+    const results = await Promise.all(shotPromises);
+    resultAssets.push(...results);
+    // Update job with results
+    const { jobs } = await getVideoAssetsConfig();
+    const jobIndex = jobs.findIndex(j => j.id === jobId);
+    if (jobIndex >= 0) {
+        jobs[jobIndex].resultAssets = resultAssets;
+        jobs[jobIndex].updatedAt = new Date().toISOString();
+        await saveVideoAssetsConfig(jobs);
+    }
+}
+// Helper to update job status
+async function updateVideoAssetJobStatus(jobId, status, error) {
+    const { jobs } = await getVideoAssetsConfig();
+    const jobIndex = jobs.findIndex(j => j.id === jobId);
+    if (jobIndex >= 0) {
+        jobs[jobIndex].status = status;
+        jobs[jobIndex].updatedAt = new Date().toISOString();
+        if (error) {
+            jobs[jobIndex].error = error;
+        }
+        await saveVideoAssetsConfig(jobs);
+    }
+}
 // List all video asset jobs
 ipcMain.handle('videoAssets:listJobs', async () => {
     const { jobs } = await getVideoAssetsConfig();
@@ -1956,7 +2086,7 @@ ipcMain.handle('room:identifyRooms', async (_e, imagePathOrBase64, detections, i
         }
         // Check for OpenAI API key (from config or env)
         const config = await loadConfig();
-        const apiKey = config.openai_api_key || process.env.OPENAI_API_KEY;
+        const apiKey = config.api_keys?.openai || config.openai_api_key || process.env.OPENAI_API_KEY;
         if (!apiKey) {
             return {
                 success: false,
@@ -2094,7 +2224,7 @@ ipcMain.handle('damage:estimateCost', async (_e, imagePathOrBase64, detections, 
         }
         // Check for OpenAI API key (from config or env)
         const config = await loadConfig();
-        const apiKey = config.openai_api_key || process.env.OPENAI_API_KEY;
+        const apiKey = config.api_keys?.openai || config.openai_api_key || process.env.OPENAI_API_KEY;
         if (!apiKey) {
             return {
                 success: false,

@@ -79,7 +79,11 @@ contextBridge.exposeInMainWorld('clappper', {
   listDamageModels: () => ipcRenderer.invoke('damage:listModels'),
   estimateDamageCost: (imagePathOrBase64: string, detections: any[], isBase64?: boolean) => ipcRenderer.invoke('damage:estimateCost', imagePathOrBase64, detections, isBase64),
   
-  // Settings
+  // Settings - Multi-Provider Key Manager
+  getApiKeys: () => ipcRenderer.invoke('settings:getApiKeys'),
+  setApiKey: (provider: string, key: string) => ipcRenderer.invoke('settings:setApiKey', { provider, key }),
+  removeApiKey: (provider: string) => ipcRenderer.invoke('settings:removeApiKey', provider),
+  // Legacy compatibility
   getOpenAIKey: () => ipcRenderer.invoke('settings:getOpenAIKey'),
   setOpenAIKey: (apiKey: string) => ipcRenderer.invoke('settings:setOpenAIKey', apiKey),
   getUsageStats: () => ipcRenderer.invoke('settings:getUsageStats'),

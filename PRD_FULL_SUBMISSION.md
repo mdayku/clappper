@@ -873,37 +873,78 @@ This pipeline produces “pseudo‑3D” filler shots directly from images using
 
 ---
 
-### Phase 10 – Current Status (Local Clappper App)
+### Phase 10 – Current Status (Local Clappper App) ✅ COMPLETE
 
-**What’s implemented now:**
-- PRD updated with full Phase 10 design (this section).
-- Electron main process:
-  - `video_asset_jobs` persisted in `config.json`.
-  - IPC handlers: `videoAssets:createJob`, `videoAssets:listJobs` (currently return mock “completed” jobs with placeholder URLs).
-  - `dialog:openImageFiles` supports multi-image selection.
-- Preload bridge (`window.clappper`):
-  - `createVideoAssetsJob({ type, shotPresetIds, imagePaths })`.
-  - `listVideoAssetsJobs()`.
-- Renderer:
-  - Zustand store tracks `videoAssetJobs` and exposes `setVideoAssetJobs`.
-  - Toolbar has **“Create Video Assets”** button.
-  - `VideoAssetsModal` lets you:
-    - Choose pipeline type (`ai_video_pack` vs `3d_render_pack`).
-    - Select 1–N product images (currently PNG/JPG/JPEG).
-    - Select a set of shot presets (pan/zoom/orbit/etc.).
-    - Create a job and see a “Recent Video Asset Jobs” list (mock results).
+**Implemented in this session:**
 
-**Planned next steps (for the next session):**
-- Replace the mock provider inside `videoAssets:createJob` with real fan‑out to one hosted AI provider (likely Replicate first):
-  - One call per shot template or batched if supported.
-  - Track per‑shot status and update `job.status` from `pending → running → completed/failed`.
-  - Write real MP4s to S3 and store their URLs in `resultAssets`.
-- Align Clappper’s local `video_asset_job` structure with the web app schema:
-  - Add `companyId` and `productId` fields and mirror the `/ad/{adId}/clip/{clipId}` hierarchy (`/videoAssetJob/{jobId}/clip/{clipId}`).
-- Expand image ingest support:
-  - Accept AVIF and other formats, normalizing everything to PNG/JPEG on ingest using ffmpeg or an image library.
+**Multi-Provider API Key Manager:**
+- ✅ Refactored config structure to support multiple API providers
+- ✅ New config schema: `api_keys: { openai: string, replicate: string }`
+- ✅ Legacy `openai_api_key` automatically migrated to new structure
+- ✅ IPC handlers: `settings:getApiKeys`, `settings:setApiKey`, `settings:removeApiKey`
+- ✅ `KeyManagerModal` component with provider dropdown and key CRUD operations
+- ✅ App.tsx updated to use new key manager instead of simple dialog
+- ✅ Menu item "Change API Key" opens multi-provider key manager
+
+**Replicate API Integration:**
+- ✅ `replicate-client.ts` - Full Replicate API client with prediction polling
+- ✅ `video-asset-prompts.ts` - Shot prompt templates for 7 camera motions
+- ✅ Shot types: pan L→R, pan R→L, dolly in, dolly out, 360° orbit, hero front, top-down
+- ✅ Each shot has customized prompt with camera motion description
+- ✅ Uses Stable Video Diffusion model for image-to-video generation
+
+**Video Asset Job Processing:**
+- ✅ Jobs created in "pending" state, processed asynchronously in background
+- ✅ `processVideoAssetJob()` - Background processor with status updates
+- ✅ `processAIVideoPack()` - Fan-out to Replicate API for all shots in parallel
+- ✅ Jobs transition: pending → running → completed/failed
+- ✅ Generated videos saved to `{userData}/VideoAssets/{jobId}/`
+- ✅ Result assets stored with file:// URLs for local playback
+
+**Real-time Job Monitoring:**
+- ✅ `VideoAssetsModal` polls for job updates every 3 seconds
+- ✅ Job list shows status with color-coded indicators (✓/✗/⟳/○)
+- ✅ Displays shot counts, completion status, error messages
+- ✅ Running jobs highlighted with blue background
+- ✅ Shows created timestamp for each job
+- ✅ Modal stays open after job creation to show progress
+
+**What works end-to-end:**
+1. User opens Key Manager from menu, adds Replicate API key
+2. User clicks "Create Video Assets" in toolbar
+3. User selects product images and shot presets
+4. Job created in "pending" state, immediately starts processing
+5. Replicate API generates videos for each shot in parallel
+6. Job list updates in real-time showing progress
+7. Completed jobs show ✓ with video count
+8. Failed jobs show ✗ with error message
+
+**Known limitations:**
+- 3D render pack not yet implemented (AI video pack only)
+- Uses first image for all shots (could extend to multi-image support)
+- No S3 upload yet (videos stored locally)
+- Generic product description in prompts (could accept custom descriptions)
+- No import-to-timeline button yet (manual import via file picker)
+
+**Next steps (future enhancements):**
+- Add "Import All Videos" button to load completed shots to timeline
+- Support custom product descriptions in prompts
+- Implement 3D render pack with Blender integration
+- Add S3 upload for cloud storage
+- Support multiple images per job (different images per shot)
+- Add cost estimation before starting job
+- Implement job cancellation (kill in-progress predictions)
 
 Use this section as the handoff summary when continuing Phase 10 work in a new chat or by a new agent.
+
+---
+
+**Session Summary (Delta for PRD):**
+- Completed Phase 10 core implementation
+- Multi-provider key manager live
+- Replicate integration functional
+- Real-time job monitoring working
+- All 5 TODOs completed ✅
 
 ---
 

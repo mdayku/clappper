@@ -135,7 +135,11 @@ declare global {
         error?: string;
       }>
       
-      // Settings
+      // Settings - Multi-Provider API Keys
+      getApiKeys: () => Promise<Record<string, string>>
+      setApiKey: (provider: string, key: string) => Promise<{ success: boolean }>
+      removeApiKey: (provider: string) => Promise<{ success: boolean }>
+      // Legacy compatibility
       getOpenAIKey: () => Promise<string | null>
       setOpenAIKey: (apiKey: string) => Promise<{ success: boolean }>
       getUsageStats: () => Promise<{
@@ -160,6 +164,51 @@ declare global {
         opened_browser?: boolean
         error?: string
       }>
+      
+      // Video Asset Jobs (Phase 10)
+      createVideoAssetsJob: (payload: {
+        type: 'ai_video_pack' | '3d_render_pack'
+        shotPresetIds: string[]
+        imagePaths: string[]
+        productId?: string | null
+      }) => Promise<{
+        id: string
+        type: 'ai_video_pack' | '3d_render_pack'
+        productId?: string | null
+        sourceImages: string[]
+        shotPresetIds: string[]
+        status: 'pending' | 'running' | 'completed' | 'failed'
+        createdAt: string
+        updatedAt: string
+        resultAssets: Array<{
+          shotId: string
+          provider: string
+          url: string
+          durationSec: number
+          width?: number
+          height?: number
+        }>
+        error?: string | null
+      }>
+      listVideoAssetsJobs: () => Promise<Array<{
+        id: string
+        type: 'ai_video_pack' | '3d_render_pack'
+        productId?: string | null
+        sourceImages: string[]
+        shotPresetIds: string[]
+        status: 'pending' | 'running' | 'completed' | 'failed'
+        createdAt: string
+        updatedAt: string
+        resultAssets: Array<{
+          shotId: string
+          provider: string
+          url: string
+          durationSec: number
+          width?: number
+          height?: number
+        }>
+        error?: string | null
+      }>>
     }
   }
 }
