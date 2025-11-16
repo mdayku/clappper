@@ -504,7 +504,7 @@ ipcMain.handle('dialog:openImageFiles', async () => {
 })
 
 // Image format detection and conversion
-ipcMain.handle('images:detectFormats', async (_event, filePaths: string[]) => {
+ipcMain.handle('images:detectFormats', async (_event: any, filePaths: string[]) => {
   const SUPPORTED_FORMATS = ['.png', '.jpg', '.jpeg']
   const CONVERTIBLE_FORMATS = ['.webp', '.avif', '.svg', '.gif', '.tiff', '.bmp']
   
@@ -529,7 +529,7 @@ ipcMain.handle('images:detectFormats', async (_event, filePaths: string[]) => {
   }
 })
 
-ipcMain.handle('images:convertToPng', async (_event, filePaths: string[]) => {
+ipcMain.handle('images:convertToPng', async (_event: any, filePaths: string[]) => {
   const results: { 
     success: boolean
     inputPath: string
